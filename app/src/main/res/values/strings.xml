@@ -35,4 +35,32 @@
     <string name="settings_show_system_title">Tampilkan aplikasi sistem</string>
     <string name="settings_show_system_desc">Secara default aplikasi sistem disembunyikan agar daftar lebih bersih.</string>
     <string name="settings_close">Tutup</string>
+
+    <!-- Layar Atur Clone -->
+    <string name="cd_back">Kembali</string>
+    <string name="title_configure_clone">Atur Clone</string>
+    <string name="tab_source_app">APLIKASI SUMBER</string>
+    <string name="tab_clone_result">HASIL CLONE</string>
+    <string name="label_clone_name">Nama Clone</string>
+    <string name="hint_clone_name">Contoh: Dualapps 2</string>
+    <string name="default_clone_name_format">%1$s 2</string>
+    <string name="note_clone_name_mvp">Di MVP, nama ini disimpan sebagai identitas hasil clone; label launcher bisa tetap mengikuti aplikasi asli bila berupa referensi @string.</string>
+    <string name="label_clone_package">Package Name Clone</string>
+    <string name="hint_clone_package">com.contoh.app.clone</string>
+    <string name="validation_package_ok">Package name valid dan belum terpasang di perangkat ini.</string>
+    <string name="disclaimer_title">Catatan Penting</string>
+    <string name="disclaimer_permanent">Tidak semua aplikasi bisa dikloning. Aplikasi dengan pemeriksaan tanda tangan, Play Integrity, atau layanan yang terikat package name + sertifikat (mis. Firebase/GMS) kemungkinan gagal dipasang atau gagal berjalan. Aplikasi bank dan pembayaran tidak dianjurkan untuk dikloning.</string>
+    <string name="action_clone">CLONE</string>
+
+    <!-- Layar Proses Clone & Intent Pasang -->
+    <string name="progress_count_format">%1$d/%2$d</string>
+    <string name="step_status_running">PROSES</string>
+    <string name="step_status_done">OK</string>
+    <string name="step_status_failed">GAGAL</string>
+    <string name="action_cancel">BATALKAN</string>
+    <string name="action_install">PASANG</string>
+    <string name="action_retry">COBA LAGI</string>
+    <string name="label_apk_size_format">Ukuran APK: %1$s</string>
+    <string name="err_apk_not_found">Berkas APK hasil clone tidak ditemukan.</string>
+    <string name="msg_allow_unknown_sources">Izinkan Dualapps memasang aplikasi dari sumber ini, lalu tekan PASANG kembali.</string>
 </resources>

@@ -160,11 +160,7 @@ class MainActivity : AppCompatActivity() {
             Toast.makeText(this, CloneError.SPLIT_UNSUPPORTED.userMessage, Toast.LENGTH_LONG).show()
             return
         }
-        Toast.makeText(
-            this,
-            getString(R.string.msg_configure_phase_note, app.label, app.packageName),
-            Toast.LENGTH_SHORT
-        ).show()
+        startActivity(ConfigureCloneActivity.createIntent(this, app))
     }
 
     private fun showSettingsDialog() {
