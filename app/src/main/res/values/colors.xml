@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Palet terkunci neo-brutalism bersih (Bagian 2B) -->
+    <color name="bg_canvas">#FCFCFA</color>
+    <color name="bg_surface">#FFFFFF</color>
+    <color name="ink_primary">#111111</color>
+    <color name="ink_muted">#525252</color>
+
+    <!-- Hanya 3 warna aksen flat -->
+    <color name="accent_yellow">#FFCF5C</color>
+    <color name="accent_purple">#B79CFF</color>
+    <color name="accent_teal">#1ED3A6</color>
+
+    <!-- Latar adaptive icon sesuai Bagian 2B -->
+    <color name="ic_launcher_background">#FCFCFA</color>
+</resources>

@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Dualapps</string>
+
+    <!-- Headline layar terkunci Bahasa Inggris (Bagian 2B) -->
+    <string name="headline_pick_app">Clone now.\nUse anytime.</string>
+    <string name="headline_configure">Make it yours.</string>
+    <string name="headline_cloning">Cloning…\nHang tight.</string>
+    <string name="headline_results">Done.\nIt\'s yours.</string>
+
+    <!-- Layar Pilih Aplikasi (Bahasa Indonesia) -->
+    <string name="cd_settings">Pengaturan</string>
+    <string name="cd_results">Hasil Clone</string>
+    <string name="cd_search">Cari aplikasi</string>
+    <string name="cd_add_apk">Clone dari berkas APK</string>
+    <string name="cd_clear_search">Hapus pencarian</string>
+    <string name="hint_search_apps">Cari nama atau package…</string>
+    <string name="section_installed_apps">Aplikasi Terpasang</string>
+    <string name="section_installed_apps_count">Aplikasi Terpasang (%1$d)</string>
+    <string name="sort_az">A–Z</string>
+    <string name="sort_za">Z–A</string>
+    <string name="sort_size">Ukuran</string>
+    <string name="badge_split_unsupported">Split — belum didukung</string>
+    <string name="msg_coming_soon">Segera hadir</string>
+    <string name="msg_results_phase_note">Daftar hasil clone akan aktif di fase berikutnya.</string>
+    <string name="msg_configure_phase_note">Aplikasi terpilih: %1$s (%2$s). Layar Atur Clone dilanjutkan di fase berikutnya.</string>
+    <string name="loading_apps">Memuat daftar aplikasi terpasang…</string>
+    <string name="empty_apps_title">Tidak ada aplikasi ditemukan</string>
+    <string name="empty_apps_desc">Coba kata kunci lain atau ubah filter aplikasi sistem di Pengaturan.</string>
+    <string name="filter_system_hidden_note">Aplikasi sistem disembunyikan</string>
+    <string name="filter_system_shown_note">Termasuk aplikasi sistem</string>
+
+    <!-- Dialog Pengaturan -->
+    <string name="settings_title">Pengaturan</string>
+    <string name="settings_show_system_title">Tampilkan aplikasi sistem</string>
+    <string name="settings_show_system_desc">Secara default aplikasi sistem disembunyikan agar daftar lebih bersih.</string>
+    <string name="settings_close">Tutup</string>
+</resources>
