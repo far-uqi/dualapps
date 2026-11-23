@@ -44,7 +44,14 @@
     <string name="label_clone_name">Nama Clone</string>
     <string name="hint_clone_name">Contoh: Dualapps 2</string>
     <string name="default_clone_name_format">%1$s 2</string>
-    <string name="note_clone_name_mvp">Di MVP, nama ini disimpan sebagai identitas hasil clone; label launcher bisa tetap mengikuti aplikasi asli bila berupa referensi @string.</string>
+    <string name="note_clone_name_mvp">Nama ini diterapkan langsung sebagai label launcher aplikasi hasil clone.</string>
+    <string name="label_clone_icon">Ikon Clone (opsional)</string>
+    <string name="action_pick_icon">PILIH GAMBAR</string>
+    <string name="action_reset_icon">PAKAI IKON ASLI</string>
+    <string name="note_clone_icon_default">Memakai ikon asli aplikasi. Pilih PNG, JPG, atau WEBP untuk mengganti ikon launcher.</string>
+    <string name="note_clone_icon_custom">Ikon custom terpilih (dipotong persegi tengah &amp; di-resize otomatis ke mdpi–xxxhdpi).</string>
+    <string name="err_icon_pick_failed">Gagal membaca gambar yang dipilih. Pilih berkas PNG, JPG, atau WEBP yang valid.</string>
+    <string name="cd_clone_icon_preview">Pratinjau ikon clone</string>
     <string name="label_clone_package">Package Name Clone</string>
     <string name="hint_clone_package">com.contoh.app.clone</string>
     <string name="validation_package_ok">Package name valid dan belum terpasang di perangkat ini.</string>

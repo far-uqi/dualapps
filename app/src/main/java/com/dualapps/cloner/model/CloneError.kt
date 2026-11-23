@@ -38,6 +38,12 @@ enum class CloneError(val userMessage: String) {
     VERIFY_PACKAGE_MISMATCH(
         "Verifikasi akhir mendeteksi package name di APK hasil tidak sesuai dengan rencana clone. Aplikasi ini kemungkinan tidak kompatibel."
     ),
+    ICON_PATCH_FAILED(
+        "Gagal menerapkan ikon custom pada APK hasil clone. Tidak ditemukan entri ikon launcher yang cocok atau gambar tidak dapat diproses."
+    ),
+    LABEL_PATCH_FAILED(
+        "Gagal mengubah nama launcher pada APK hasil clone. Atribut label tidak ditemukan atau struktur string di resources.arsc tidak didukung."
+    ),
     CANCELLED(
         "Proses clone dibatalkan oleh pengguna."
     ),

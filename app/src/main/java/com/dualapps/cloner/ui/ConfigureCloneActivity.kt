@@ -2,15 +2,23 @@ package com.dualapps.cloner.ui
 
 import android.content.Context
 import android.content.Intent
+import android.graphics.drawable.Drawable
+import android.net.Uri
 import android.os.Bundle
 import android.text.Editable
 import android.text.TextWatcher
+import android.view.View
+import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import com.dualapps.cloner.R
 import com.dualapps.cloner.databinding.ActivityConfigureCloneBinding
 import com.dualapps.cloner.engine.PackageNameValidator
 import com.dualapps.cloner.model.InstalledApp
 import com.dualapps.cloner.util.FormatUtils
+import com.dualapps.cloner.util.IconProcessor
+import java.io.File
+import java.util.UUID
 
 class ConfigureCloneActivity : AppCompatActivity() {
 
@@ -22,6 +30,16 @@ class ConfigureCloneActivity : AppCompatActivity() {
     private var sourceSizeBytes: Long = 0L
     private var isSplitApk: Boolean = false
     private var isCurrentPackageValid: Boolean = false
+    private var originalAppIcon: Drawable? = null
+    private var customIconFile: File? = null
+
+    private val pickIconLauncher = registerForActivityResult(
+        ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            handlePickedIconUri(uri)
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -49,11 +67,20 @@ class ConfigureCloneActivity : AppCompatActivity() {
         binding.tvSourcePackage.text = sourcePackage
         binding.tvSourceSize.text = FormatUtils.formatFileSize(sourceSizeBytes)
 
-        val icon = runCatching { packageManager.getApplicationIcon(sourcePackage) }.getOrNull()
-        if (icon != null) {
-            binding.ivSourceIcon.setImageDrawable(icon)
+        originalAppIcon = runCatching { packageManager.getApplicationIcon(sourcePackage) }.getOrNull()
+        if (originalAppIcon != null) {
+            binding.ivSourceIcon.setImageDrawable(originalAppIcon)
+            binding.ivCloneIconPreview.setImageDrawable(originalAppIcon)
         } else {
             binding.ivSourceIcon.setImageResource(R.mipmap.ic_launcher)
+            binding.ivCloneIconPreview.setImageResource(R.mipmap.ic_launcher)
+        }
+
+        binding.btnPickIcon.setOnClickListener {
+            pickIconLauncher.launch("image/*")
+        }
+        binding.btnResetIcon.setOnClickListener {
+            resetCustomIcon()
         }
 
         // Default nama clone: "<nama asli> 2"
@@ -92,12 +119,42 @@ class ConfigureCloneActivity : AppCompatActivity() {
                     originalAppName = sourceName,
                     originalPackageName = sourcePackage,
                     cloneName = cloneName,
-                    clonePackageName = clonePackage
+                    clonePackageName = clonePackage,
+                    customIconPath = customIconFile?.absolutePath
                 )
             )
         }
 
         validateInputs()
+    }
+
+    private fun handlePickedIconUri(uri: Uri) {
+        val iconsDir = File(cacheDir, "picked_icons")
+        val targetFile = File(iconsDir, "icon_${UUID.randomUUID()}.png")
+        try {
+            val previewBitmap = IconProcessor.decodeCropAndSaveSquarePng(this, uri, targetFile)
+            // Hapus berkas ikon sementara sebelumnya bila ada
+            customIconFile?.delete()
+            customIconFile = targetFile
+            binding.ivCloneIconPreview.setImageBitmap(previewBitmap)
+            binding.tvCloneIconStatus.setText(R.string.note_clone_icon_custom)
+            binding.btnResetIcon.visibility = View.VISIBLE
+        } catch (e: Exception) {
+            targetFile.delete()
+            Toast.makeText(this, R.string.err_icon_pick_failed, Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun resetCustomIcon() {
+        customIconFile?.delete()
+        customIconFile = null
+        if (originalAppIcon != null) {
+            binding.ivCloneIconPreview.setImageDrawable(originalAppIcon)
+        } else {
+            binding.ivCloneIconPreview.setImageResource(R.mipmap.ic_launcher)
+        }
+        binding.tvCloneIconStatus.setText(R.string.note_clone_icon_default)
+        binding.btnResetIcon.visibility = View.GONE
     }
 
     private fun validateInputs() {

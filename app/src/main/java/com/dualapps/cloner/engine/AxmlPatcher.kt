@@ -27,7 +27,13 @@ object AxmlPatcher {
     const val RES_XML_TYPE = 0x0003
     const val RES_STRING_POOL_TYPE = 0x0001
     const val RES_XML_START_ELEMENT_TYPE = 0x0102
+    private const val TYPE_REFERENCE = 0x01
     private const val TYPE_STRING = 0x03
+
+    sealed class LabelTarget {
+        data class Literal(val value: String) : LabelTarget()
+        data class ResourceRef(val resId: Int) : LabelTarget()
+    }
 
     private val COMPONENT_TAGS = setOf(
         "application", "activity", "activity-alias", "service", "receiver", "provider"
@@ -141,6 +147,235 @@ object AxmlPatcher {
                                 else -> -1
                             }
                             return pool.strings.getOrNull(strIdx)
+                        }
+                    }
+                }
+            }
+            offset += chunkSize
+        }
+        return null
+    }
+
+    /**
+     * Membaca atribut `android:label` pada elemen `<application>` dari AXML biner.
+     * Mengembalikan [LabelTarget.Literal] bila berupa string langsung, atau
+     * [LabelTarget.ResourceRef] bila berupa referensi `@string/...`.
+     */
+    fun readApplicationLabel(axmlBytes: ByteArray): LabelTarget? {
+        val parsed = parseHeaderAndPool(axmlBytes)
+        val pool = parsed.stringPool
+        var offset = parsed.afterStringPoolOffset
+
+        while (offset + 8 <= axmlBytes.size) {
+            val type = readU16(axmlBytes, offset)
+            val headerSize = readU16(axmlBytes, offset + 2)
+            val chunkSize = readI32(axmlBytes, offset + 4)
+            if (chunkSize < 8 || offset + chunkSize > axmlBytes.size) {
+                throw CloneException(CloneError.AXML_PARSE_FAILED, "Ukuran chunk AXML tidak valid pada offset $offset.")
+            }
+
+            if (type == RES_XML_START_ELEMENT_TYPE && offset + headerSize + 20 <= offset + chunkSize) {
+                val extStart = offset + headerSize
+                val nameIdx = readI32(axmlBytes, extStart + 4)
+                val attributeStart = readU16(axmlBytes, extStart + 8)
+                val attributeSize = readU16(axmlBytes, extStart + 10)
+                val attributeCount = readU16(axmlBytes, extStart + 12)
+                val tagName = pool.strings.getOrNull(nameIdx)
+
+                if (tagName == "application") {
+                    val attrsBase = extStart + attributeStart
+                    for (i in 0 until attributeCount) {
+                        val attrOff = attrsBase + i * attributeSize
+                        if (attrOff + 20 > offset + chunkSize) break
+                        val attrNameIdx = readI32(axmlBytes, attrOff + 4)
+                        val rawValueIdx = readI32(axmlBytes, attrOff + 8)
+                        val valueType = axmlBytes[attrOff + 15].toInt() and 0xFF
+                        val valueData = readI32(axmlBytes, attrOff + 16)
+
+                        if (pool.strings.getOrNull(attrNameIdx) == "label") {
+                            return when {
+                                valueType == TYPE_REFERENCE && valueData != 0 -> {
+                                    LabelTarget.ResourceRef(valueData)
+                                }
+                                valueType == TYPE_STRING && valueData >= 0 -> {
+                                    pool.strings.getOrNull(valueData)?.let { LabelTarget.Literal(it) }
+                                }
+                                rawValueIdx >= 0 -> {
+                                    pool.strings.getOrNull(rawValueIdx)?.let { LabelTarget.Literal(it) }
+                                }
+                                else -> null
+                            }
+                        }
+                    }
+                }
+            }
+            offset += chunkSize
+        }
+        return null
+    }
+
+    /**
+     * Mengganti nilai string literal `android:label` pada elemen `<application>` di AXML biner.
+     * Menambahkan string baru ke StringPool agar indeks string lama tidak bergeser.
+     */
+    fun patchApplicationLabelLiteral(axmlBytes: ByteArray, newLabel: String): ByteArray {
+        if (newLabel.isBlank()) {
+            throw CloneException(CloneError.LABEL_PATCH_FAILED, "Nama launcher clone tidak boleh kosong.")
+        }
+
+        val parsed = parseHeaderAndPool(axmlBytes)
+        val pool = parsed.stringPool
+        val restBytes = axmlBytes.copyOfRange(parsed.afterStringPoolOffset, axmlBytes.size)
+        var offset = 0
+        var patched = false
+
+        while (offset + 8 <= restBytes.size) {
+            val type = readU16(restBytes, offset)
+            val headerSize = readU16(restBytes, offset + 2)
+            val chunkSize = readI32(restBytes, offset + 4)
+            if (chunkSize < 8 || offset + chunkSize > restBytes.size) {
+                throw CloneException(CloneError.LABEL_PATCH_FAILED, "Chunk AXML rusak saat patch label.")
+            }
+
+            if (type == RES_XML_START_ELEMENT_TYPE && offset + headerSize + 20 <= offset + chunkSize) {
+                val extStart = offset + headerSize
+                val nameIdx = readI32(restBytes, extStart + 4)
+                val attributeStart = readU16(restBytes, extStart + 8)
+                val attributeSize = readU16(restBytes, extStart + 10)
+                val attributeCount = readU16(restBytes, extStart + 12)
+
+                if (pool.strings.getOrNull(nameIdx) == "application") {
+                    val attrsBase = extStart + attributeStart
+                    for (i in 0 until attributeCount) {
+                        val attrOff = attrsBase + i * attributeSize
+                        if (attrOff + 20 > offset + chunkSize) break
+                        val attrNameIdx = readI32(restBytes, attrOff + 4)
+                        val valueType = restBytes[attrOff + 15].toInt() and 0xFF
+                        if (pool.strings.getOrNull(attrNameIdx) == "label") {
+                            if (valueType == TYPE_REFERENCE) {
+                                throw CloneException(
+                                    CloneError.LABEL_PATCH_FAILED,
+                                    "Atribut android:label berupa referensi resource, bukan literal."
+                                )
+                            }
+                            val newIdx = getOrAddString(pool, newLabel)
+                            writeI32(restBytes, attrOff + 8, newIdx)
+                            restBytes[attrOff + 15] = TYPE_STRING.toByte()
+                            writeI32(restBytes, attrOff + 16, newIdx)
+                            patched = true
+                            break
+                        }
+                    }
+                }
+            }
+            offset += chunkSize
+        }
+
+        if (!patched) {
+            throw CloneException(
+                CloneError.LABEL_PATCH_FAILED,
+                "Atribut android:label literal tidak ditemukan pada elemen <application>."
+            )
+        }
+
+        val newPoolBytes = pool.toByteArray()
+        val totalSize = parsed.xmlHeaderSize + newPoolBytes.size + restBytes.size
+        val out = ByteArrayOutputStream(totalSize)
+        val rootHeader = ByteBuffer.allocate(parsed.xmlHeaderSize).order(ByteOrder.LITTLE_ENDIAN)
+        rootHeader.putShort(RES_XML_TYPE.toShort())
+        rootHeader.putShort(parsed.xmlHeaderSize.toShort())
+        rootHeader.putInt(totalSize)
+        if (parsed.xmlHeaderSize > 8) {
+            rootHeader.put(axmlBytes, 8, parsed.xmlHeaderSize - 8)
+        }
+        out.write(rootHeader.array())
+        out.write(newPoolBytes)
+        out.write(restBytes)
+        val patchedBytes = out.toByteArray()
+
+        val verified = readApplicationLabel(patchedBytes)
+        if (verified != LabelTarget.Literal(newLabel)) {
+            throw CloneException(
+                CloneError.LABEL_PATCH_FAILED,
+                "Verifikasi label literal gagal: diharapkan '$newLabel', terbaca '$verified'."
+            )
+        }
+        return patchedBytes
+    }
+
+    /**
+     * Membaca resource ID dari atribut `android:icon` dan `android:roundIcon` pada `<application>`.
+     */
+    fun readApplicationIconRefs(axmlBytes: ByteArray): List<Int> {
+        val parsed = parseHeaderAndPool(axmlBytes)
+        val pool = parsed.stringPool
+        val refs = LinkedHashSet<Int>()
+        var offset = parsed.afterStringPoolOffset
+
+        while (offset + 8 <= axmlBytes.size) {
+            val type = readU16(axmlBytes, offset)
+            val headerSize = readU16(axmlBytes, offset + 2)
+            val chunkSize = readI32(axmlBytes, offset + 4)
+            if (chunkSize < 8 || offset + chunkSize > axmlBytes.size) break
+
+            if (type == RES_XML_START_ELEMENT_TYPE && offset + headerSize + 20 <= offset + chunkSize) {
+                val extStart = offset + headerSize
+                val nameIdx = readI32(axmlBytes, extStart + 4)
+                val attributeStart = readU16(axmlBytes, extStart + 8)
+                val attributeSize = readU16(axmlBytes, extStart + 10)
+                val attributeCount = readU16(axmlBytes, extStart + 12)
+                if (pool.strings.getOrNull(nameIdx) == "application") {
+                    val attrsBase = extStart + attributeStart
+                    for (i in 0 until attributeCount) {
+                        val attrOff = attrsBase + i * attributeSize
+                        if (attrOff + 20 > offset + chunkSize) break
+                        val attrName = pool.strings.getOrNull(readI32(axmlBytes, attrOff + 4))
+                        val valueType = axmlBytes[attrOff + 15].toInt() and 0xFF
+                        val valueData = readI32(axmlBytes, attrOff + 16)
+                        if ((attrName == "icon" || attrName == "roundIcon") &&
+                            valueType == TYPE_REFERENCE && valueData != 0
+                        ) {
+                            refs.add(valueData)
+                        }
+                    }
+                }
+            }
+            offset += chunkSize
+        }
+        return refs.toList()
+    }
+
+    /**
+     * Membaca resource ID `android:drawable` dari elemen `<foreground>` pada berkas
+     * adaptive-icon XML biner (`res/mipmap-anydpi-v26/ic_launcher*.xml`).
+     */
+    fun readAdaptiveIconForegroundRef(axmlBytes: ByteArray): Int? {
+        val parsed = runCatching { parseHeaderAndPool(axmlBytes) }.getOrNull() ?: return null
+        val pool = parsed.stringPool
+        var offset = parsed.afterStringPoolOffset
+
+        while (offset + 8 <= axmlBytes.size) {
+            val type = readU16(axmlBytes, offset)
+            val headerSize = readU16(axmlBytes, offset + 2)
+            val chunkSize = readI32(axmlBytes, offset + 4)
+            if (chunkSize < 8 || offset + chunkSize > axmlBytes.size) break
+
+            if (type == RES_XML_START_ELEMENT_TYPE && offset + headerSize + 20 <= offset + chunkSize) {
+                val extStart = offset + headerSize
+                val nameIdx = readI32(axmlBytes, extStart + 4)
+                val attributeStart = readU16(axmlBytes, extStart + 8)
+                val attributeSize = readU16(axmlBytes, extStart + 10)
+                val attributeCount = readU16(axmlBytes, extStart + 12)
+                if (pool.strings.getOrNull(nameIdx) == "foreground") {
+                    val attrsBase = extStart + attributeStart
+                    for (i in 0 until attributeCount) {
+                        val attrOff = attrsBase + i * attributeSize
+                        if (attrOff + 20 > offset + chunkSize) break
+                        val attrName = pool.strings.getOrNull(readI32(axmlBytes, attrOff + 4))
+                        val valueType = axmlBytes[attrOff + 15].toInt() and 0xFF
+                        val valueData = readI32(axmlBytes, attrOff + 16)
+                        if (attrName == "drawable" && valueType == TYPE_REFERENCE && valueData != 0) {
+                            return valueData
                         }
                     }
                 }

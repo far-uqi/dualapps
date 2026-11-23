@@ -20,7 +20,10 @@ object BinaryFixtureBuilder {
      */
     fun buildManifestAxml(
         packageName: String,
-        useUtf8: Boolean
+        useUtf8: Boolean,
+        labelLiteral: String? = "Dualapps",
+        labelResId: Int? = null,
+        iconResId: Int? = null
     ): ByteArray {
         val strings = mutableListOf(
             "http://schemas.android.com/apk/res/android", // 0
@@ -39,6 +42,19 @@ object BinaryFixtureBuilder {
             "authorities",                                // 13
             "$packageName.fileprovider"                   // 14
         )
+        val labelNameIdx = if (labelLiteral != null || labelResId != null) {
+            strings.add("label")
+            strings.lastIndex
+        } else -1
+        val labelValIdx = if (labelLiteral != null) {
+            strings.add(labelLiteral)
+            strings.lastIndex
+        } else -1
+        val iconNameIdx = if (iconResId != null) {
+            strings.add("icon")
+            strings.lastIndex
+        } else -1
+
         val pool = AxmlStringPool(
             strings = strings,
             isUtf8 = useUtf8,
@@ -67,14 +83,33 @@ object BinaryFixtureBuilder {
         )
         body.write(buildEndElement(nsIdx = -1, nameIdx = 4))
 
-        // <application android:name=".App">
-        body.write(
-            buildStartElement(
-                nsIdx = -1,
-                nameIdx = 7,
-                attrs = listOf(AttrSpec(nsIdx = 0, nameIdx = 5, valueStrIdx = 8))
+        // <application android:name=".App" [android:label=...] [android:icon=...]>
+        val appAttrs = mutableListOf(AttrSpec(nsIdx = 0, nameIdx = 5, valueStrIdx = 8))
+        if (labelResId != null) {
+            appAttrs.add(
+                AttrSpec(
+                    nsIdx = 0,
+                    nameIdx = labelNameIdx,
+                    valueStrIdx = -1,
+                    valueType = 0x01,
+                    valueData = labelResId
+                )
             )
-        )
+        } else if (labelLiteral != null) {
+            appAttrs.add(AttrSpec(nsIdx = 0, nameIdx = labelNameIdx, valueStrIdx = labelValIdx))
+        }
+        if (iconResId != null) {
+            appAttrs.add(
+                AttrSpec(
+                    nsIdx = 0,
+                    nameIdx = iconNameIdx,
+                    valueStrIdx = -1,
+                    valueType = 0x01,
+                    valueData = iconResId
+                )
+            )
+        }
+        body.write(buildStartElement(nsIdx = -1, nameIdx = 7, attrs = appAttrs))
         // <activity android:name="<pkg>.MainActivity"/>
         body.write(
             buildStartElement(
@@ -111,7 +146,63 @@ object BinaryFixtureBuilder {
         return out.array()
     }
 
-    private data class AttrSpec(val nsIdx: Int, val nameIdx: Int, val valueStrIdx: Int)
+    /**
+     * Membangun berkas adaptive-icon XML biner (`<adaptive-icon><background .../><foreground .../></adaptive-icon>`).
+     */
+    fun buildAdaptiveIconAxml(foregroundResId: Int, backgroundResId: Int): ByteArray {
+        val strings = mutableListOf(
+            "http://schemas.android.com/apk/res/android", // 0
+            "adaptive-icon",                              // 1
+            "background",                                 // 2
+            "foreground",                                 // 3
+            "drawable"                                    // 4
+        )
+        val poolBytes = AxmlStringPool(
+            strings = strings,
+            isUtf8 = true,
+            originalFlags = AxmlStringPool.UTF8_FLAG,
+            styleOffsets = IntArray(0),
+            stylesData = ByteArray(0)
+        ).toByteArray()
+
+        val body = ByteArrayOutputStream()
+        body.write(buildStartElement(-1, 1, emptyList()))
+        body.write(
+            buildStartElement(
+                -1,
+                2,
+                listOf(AttrSpec(0, 4, valueStrIdx = -1, valueType = 0x01, valueData = backgroundResId))
+            )
+        )
+        body.write(buildEndElement(-1, 2))
+        body.write(
+            buildStartElement(
+                -1,
+                3,
+                listOf(AttrSpec(0, 4, valueStrIdx = -1, valueType = 0x01, valueData = foregroundResId))
+            )
+        )
+        body.write(buildEndElement(-1, 3))
+        body.write(buildEndElement(-1, 1))
+
+        val bodyBytes = body.toByteArray()
+        val totalSize = 8 + poolBytes.size + bodyBytes.size
+        val out = ByteBuffer.allocate(totalSize).order(ByteOrder.LITTLE_ENDIAN)
+        out.putShort(AxmlPatcher.RES_XML_TYPE.toShort())
+        out.putShort(8)
+        out.putInt(totalSize)
+        out.put(poolBytes)
+        out.put(bodyBytes)
+        return out.array()
+    }
+
+    private data class AttrSpec(
+        val nsIdx: Int,
+        val nameIdx: Int,
+        val valueStrIdx: Int,
+        val valueType: Int = 0x03,
+        val valueData: Int = valueStrIdx
+    )
 
     private fun buildStartElement(nsIdx: Int, nameIdx: Int, attrs: List<AttrSpec>): ByteArray {
         val headerSize = 16
@@ -141,8 +232,8 @@ object BinaryFixtureBuilder {
             buf.putInt(a.valueStrIdx) // rawValue
             buf.putShort(8)           // Res_value.size
             buf.put(0)                // res0
-            buf.put(0x03)             // TYPE_STRING
-            buf.putInt(a.valueStrIdx) // data
+            buf.put(a.valueType.toByte())
+            buf.putInt(a.valueData)   // data
         }
         return buf.array()
     }
@@ -210,6 +301,118 @@ object BinaryFixtureBuilder {
         tableBuf.putShort(12)
         tableBuf.putInt(totalSize)
         tableBuf.putInt(1) // packageCount
+        tableBuf.put(globalPool)
+        tableBuf.put(pkgBuf.array())
+        return tableBuf.array()
+    }
+
+    /**
+     * Membangun `resources.arsc` lengkap dengan chunk `ResTable_type` (0x0201) yang berisi
+     * entri-entri string/path untuk menguji patch `@string` (UTF-8 & UTF-16) dan resolusi
+     * path foreground adaptive icon.
+     *
+     * Setiap item pada [typeChunks] adalah `(typeId, listOf(entryId to stringValue))`.
+     */
+    fun buildArscWithTypeChunks(
+        packageName: String,
+        useUtf8: Boolean,
+        typeChunks: List<Pair<Int, List<Pair<Int, String>>>>,
+        packageId: Int = 0x7F
+    ): ByteArray {
+        val poolStrings = mutableListOf<String>()
+        fun addString(s: String): Int {
+            val idx = poolStrings.indexOf(s)
+            if (idx >= 0) return idx
+            poolStrings.add(s)
+            return poolStrings.lastIndex
+        }
+
+        val typeChunkBytesList = mutableListOf<ByteArray>()
+        for ((typeId, entries) in typeChunks) {
+            val maxEntryId = entries.maxOfOrNull { it.first } ?: 0
+            val entryCount = maxEntryId + 1
+            val typeHeaderSize = 68 // 20B fixed + 48B ResTable_config
+            val offsetsSize = entryCount * 4
+            val entriesStart = typeHeaderSize + offsetsSize
+
+            val offsets = IntArray(entryCount) { -1 }
+            val entriesStream = ByteArrayOutputStream()
+            for ((entryId, value) in entries) {
+                val strIdx = addString(value)
+                offsets[entryId] = entriesStream.size()
+                val eBuf = ByteBuffer.allocate(16).order(ByteOrder.LITTLE_ENDIAN)
+                // ResTable_entry (8B): size=8, flags=0, key=entryId
+                eBuf.putShort(8)
+                eBuf.putShort(0)
+                eBuf.putInt(entryId)
+                // Res_value (8B): size=8, res0=0, dataType=TYPE_STRING(0x03), data=strIdx
+                eBuf.putShort(8)
+                eBuf.put(0)
+                eBuf.put(0x03)
+                eBuf.putInt(strIdx)
+                entriesStream.write(eBuf.array())
+            }
+
+            val entriesData = entriesStream.toByteArray()
+            val chunkSize = entriesStart + entriesData.size
+            val tBuf = ByteBuffer.allocate(chunkSize).order(ByteOrder.LITTLE_ENDIAN)
+            tBuf.putShort(ArscPatcher.RES_TABLE_TYPE_TYPE.toShort())
+            tBuf.putShort(typeHeaderSize.toShort())
+            tBuf.putInt(chunkSize)
+            tBuf.put(typeId.toByte())
+            tBuf.put(0) // flags
+            tBuf.putShort(0) // reserved
+            tBuf.putInt(entryCount)
+            tBuf.putInt(entriesStart)
+            // ResTable_config (48B zeros, size=48)
+            tBuf.putInt(48)
+            tBuf.put(ByteArray(44))
+            for (off in offsets) {
+                tBuf.putInt(off)
+            }
+            tBuf.put(entriesData)
+            typeChunkBytesList.add(tBuf.array())
+        }
+
+        val globalPool = AxmlStringPool(
+            strings = poolStrings,
+            isUtf8 = useUtf8,
+            originalFlags = if (useUtf8) AxmlStringPool.UTF8_FLAG else 0,
+            styleOffsets = IntArray(0),
+            stylesData = ByteArray(0)
+        ).toByteArray()
+
+        val pkgHeaderSize = 288
+        val childChunksSize = typeChunkBytesList.sumOf { it.size }
+        val pkgChunkSize = pkgHeaderSize + childChunksSize
+        val pkgBuf = ByteBuffer.allocate(pkgChunkSize).order(ByteOrder.LITTLE_ENDIAN)
+        pkgBuf.putShort(ArscPatcher.RES_TABLE_PACKAGE_TYPE.toShort())
+        pkgBuf.putShort(pkgHeaderSize.toShort())
+        pkgBuf.putInt(pkgChunkSize)
+        pkgBuf.putInt(packageId)
+
+        val nameBytes = ByteArray(256)
+        for (i in packageName.indices.take(127)) {
+            val c = packageName[i].code
+            nameBytes[i * 2] = (c and 0xFF).toByte()
+            nameBytes[i * 2 + 1] = ((c ushr 8) and 0xFF).toByte()
+        }
+        pkgBuf.put(nameBytes)
+        pkgBuf.putInt(0)
+        pkgBuf.putInt(0)
+        pkgBuf.putInt(0)
+        pkgBuf.putInt(0)
+        pkgBuf.putInt(0)
+        for (chunk in typeChunkBytesList) {
+            pkgBuf.put(chunk)
+        }
+
+        val totalSize = 12 + globalPool.size + pkgChunkSize
+        val tableBuf = ByteBuffer.allocate(totalSize).order(ByteOrder.LITTLE_ENDIAN)
+        tableBuf.putShort(ArscPatcher.RES_TABLE_TYPE.toShort())
+        tableBuf.putShort(12)
+        tableBuf.putInt(totalSize)
+        tableBuf.putInt(1)
         tableBuf.put(globalPool)
         tableBuf.put(pkgBuf.array())
         return tableBuf.array()

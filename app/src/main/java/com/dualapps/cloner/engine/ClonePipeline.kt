@@ -43,8 +43,9 @@ enum class CloneStep(val index: Int, val label: String) {
     PATCH_MANIFEST(1, "Patch AndroidManifest.xml (AXML)"),
     PATCH_ARSC(2, "Patch resources.arsc"),
     REBUILD_APK(3, "Bangun ulang APK & jaga alignment"),
-    SIGN_AND_VERIFY(4, "Tanda tangani ulang (v1 + v2) & ApkVerifier"),
-    VERIFY_ARCHIVE(5, "Verifikasi akhir package archive")
+    APPLY_IDENTITY(4, "Terapkan identitas"),
+    SIGN_AND_VERIFY(5, "Tanda tangani ulang (v1 + v2) & ApkVerifier"),
+    VERIFY_ARCHIVE(6, "Verifikasi akhir package archive")
 }
 
 data class CloneRequest(
@@ -53,7 +54,8 @@ data class CloneRequest(
     val originalAppName: String,
     val originalPackageName: String,
     val cloneName: String,
-    val clonePackageName: String
+    val clonePackageName: String,
+    val customIconPngs: Map<String, ByteArray>? = null
 )
 
 /**
@@ -159,6 +161,34 @@ class ClonePipeline(
             onStepStart(CloneStep.REBUILD_APK)
             onStepDone(CloneStep.REBUILD_APK)
 
+            // Langkah 5b (Fase 5): Terapkan identitas (nama launcher &/atau ikon custom) bila diminta
+            val needsLabelPatch = request.cloneName.isNotBlank() &&
+                request.cloneName.trim() != request.originalAppName.trim()
+            val needsIconPatch = !request.customIconPngs.isNullOrEmpty()
+            val apkReadyForSigning = if (needsLabelPatch || needsIconPatch) {
+                activeStep = CloneStep.APPLY_IDENTITY
+                onStepStart(activeStep)
+                checkCancelled()
+
+                val identityApk = File(workDir, "identity.apk")
+                CloneIdentityPatcher.applyIdentity(
+                    inputApk = unsignedApk,
+                    outputApk = identityApk,
+                    newLabel = if (needsLabelPatch) request.cloneName.trim() else null,
+                    customIconPngs = if (needsIconPatch) request.customIconPngs else null,
+                    checkCancelled = {
+                        if (Thread.currentThread().isInterrupted) {
+                            throw CloneException(CloneError.CANCELLED)
+                        }
+                    }
+                )
+                checkCancelled()
+                onStepDone(activeStep)
+                identityApk
+            } else {
+                unsignedApk
+            }
+
             // Langkah 6: Tanda tangani ulang (keystore unik per perangkat + apksig v1/v2 + ApkVerifier)
             activeStep = CloneStep.SIGN_AND_VERIFY
             onStepStart(activeStep)
@@ -166,7 +196,7 @@ class ClonePipeline(
 
             val signingMaterial = keystoreManager.getOrCreateSigningMaterial()
             val signedApk = File(workDir, "signed.apk")
-            ApkSigningEngine.signAndVerify(unsignedApk, signedApk, signingMaterial)
+            ApkSigningEngine.signAndVerify(apkReadyForSigning, signedApk, signingMaterial)
             onStepDone(activeStep)
 
             // Langkah 7: Verifikasi akhir sebelum sukses dinyatakan (getPackageArchiveInfo)

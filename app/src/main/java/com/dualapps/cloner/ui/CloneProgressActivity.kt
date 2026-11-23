@@ -20,12 +20,15 @@ import com.dualapps.cloner.model.CloneException
 import com.dualapps.cloner.model.ClonedApkRecord
 import com.dualapps.cloner.util.ApkInstaller
 import com.dualapps.cloner.util.FormatUtils
+import com.dualapps.cloner.util.IconProcessor
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
 
 class CloneProgressActivity : AppCompatActivity() {
 
@@ -34,6 +37,7 @@ class CloneProgressActivity : AppCompatActivity() {
     private var cloneJob: Job? = null
 
     private lateinit var request: CloneRequest
+    private var customIconPath: String? = null
     private val stepBindings = LinkedHashMap<CloneStep, ItemCloneStepBinding>()
     private var currentActiveStep: CloneStep = CloneStep.VALIDATE_SOURCE
     private var completedStepsCount: Int = 0
@@ -52,6 +56,7 @@ class CloneProgressActivity : AppCompatActivity() {
             return
         }
 
+        customIconPath = intent.getStringExtra(EXTRA_CUSTOM_ICON_PATH)
         request = CloneRequest(
             sourceApkPath = sourceDir,
             isSplitApk = intent.getBooleanExtra(EXTRA_IS_SPLIT, false),
@@ -134,8 +139,16 @@ class CloneProgressActivity : AppCompatActivity() {
 
         cloneJob = uiScope.launch {
             try {
+                val effectiveRequest = if (!customIconPath.isNullOrBlank()) {
+                    val densityPngs = withContext(Dispatchers.IO) {
+                        IconProcessor.generateDensityPngsFromFile(File(customIconPath!!))
+                    }
+                    request.copy(customIconPngs = densityPngs)
+                } else {
+                    request
+                }
                 val record = pipeline.execute(
-                    request = request,
+                    request = effectiveRequest,
                     onStepStart = { step ->
                         runOnUiThread {
                             currentActiveStep = step
@@ -166,6 +179,13 @@ class CloneProgressActivity : AppCompatActivity() {
 
     private fun onCloneSuccess(record: ClonedApkRecord) {
         completedRecord = record
+        // Pastikan progress penuh meski langkah APPLY_IDENTITY dilewati saat tidak ada perubahan identitas
+        binding.progressBar.progress = CloneStep.entries.size
+        binding.tvProgressCount.text = getString(
+            R.string.progress_count_format,
+            CloneStep.entries.size,
+            CloneStep.entries.size
+        )
         binding.tvHeadline.setText(R.string.headline_results)
         binding.btnCancel.visibility = View.GONE
         binding.btnRetry.visibility = View.GONE
@@ -253,6 +273,7 @@ class CloneProgressActivity : AppCompatActivity() {
         private const val EXTRA_ORIGINAL_PACKAGE = "extra_original_package"
         private const val EXTRA_CLONE_NAME = "extra_clone_name"
         private const val EXTRA_CLONE_PACKAGE = "extra_clone_package"
+        private const val EXTRA_CUSTOM_ICON_PATH = "extra_custom_icon_path"
 
         fun createIntent(
             context: Context,
@@ -261,7 +282,8 @@ class CloneProgressActivity : AppCompatActivity() {
             originalAppName: String,
             originalPackageName: String,
             cloneName: String,
-            clonePackageName: String
+            clonePackageName: String,
+            customIconPath: String? = null
         ): Intent {
             return Intent(context, CloneProgressActivity::class.java).apply {
                 putExtra(EXTRA_SOURCE_DIR, sourceDir)
@@ -270,6 +292,9 @@ class CloneProgressActivity : AppCompatActivity() {
                 putExtra(EXTRA_ORIGINAL_PACKAGE, originalPackageName)
                 putExtra(EXTRA_CLONE_NAME, cloneName)
                 putExtra(EXTRA_CLONE_PACKAGE, clonePackageName)
+                if (!customIconPath.isNullOrBlank()) {
+                    putExtra(EXTRA_CUSTOM_ICON_PATH, customIconPath)
+                }
             }
         }
     }
