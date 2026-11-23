@@ -196,6 +196,111 @@ object BinaryFixtureBuilder {
         return out.array()
     }
 
+    /**
+     * Membangun berkas VectorDrawable XML biner (`<vector/>`) minimal untuk fixture uji Fase 6.
+     */
+    fun buildVectorDrawableAxml(): ByteArray {
+        val strings = mutableListOf(
+            "http://schemas.android.com/apk/res/android", // 0
+            "vector",                                     // 1
+            "path"                                        // 2
+        )
+        val poolBytes = AxmlStringPool(
+            strings = strings,
+            isUtf8 = true,
+            originalFlags = AxmlStringPool.UTF8_FLAG,
+            styleOffsets = IntArray(0),
+            stylesData = ByteArray(0)
+        ).toByteArray()
+
+        val body = ByteArrayOutputStream()
+        body.write(buildStartElement(-1, 1, emptyList()))
+        body.write(buildStartElement(-1, 2, emptyList()))
+        body.write(buildEndElement(-1, 2))
+        body.write(buildEndElement(-1, 1))
+
+        val bodyBytes = body.toByteArray()
+        val totalSize = 8 + poolBytes.size + bodyBytes.size
+        val out = ByteBuffer.allocate(totalSize).order(ByteOrder.LITTLE_ENDIAN)
+        out.putShort(AxmlPatcher.RES_XML_TYPE.toShort())
+        out.putShort(8)
+        out.putInt(totalSize)
+        out.put(poolBytes)
+        out.put(bodyBytes)
+        return out.array()
+    }
+
+    /**
+     * Membangun APK fixture meniru struktur Muse (`com.facebook.aura`):
+     * - `android:icon=@0x7F0F0000` -> `res/bi2.xml` (`<adaptive-icon>`)
+     * - `<background>@0x7F0800AD` -> `res/js.xml`
+     * - `<foreground>@0x7F0800AE` -> `res/jt.xml` (vector XML)
+     * - Tidak memiliki entri PNG ikon sama sekali di dalam APK.
+     */
+    fun buildVectorAdaptiveIconApk(
+        outputFile: File,
+        packageName: String
+    ): Pair<ByteArray, ByteArray> {
+        val iconXmlResId = 0x7F0F0000
+        val bgResId = 0x7F0800AD
+        val fgResId = 0x7F0800AE
+
+        val adaptiveXml = buildAdaptiveIconAxml(foregroundResId = fgResId, backgroundResId = bgResId)
+        val bgXml = buildVectorDrawableAxml()
+        val fgVectorXml = buildVectorDrawableAxml()
+
+        val arsc = buildArscWithTypeChunks(
+            packageName = packageName,
+            useUtf8 = true,
+            typeChunks = listOf(
+                0x0F to listOf(0x0000 to "res/bi2.xml"),
+                0x08 to listOf(
+                    0x00AD to "res/js.xml",
+                    0x00AE to "res/jt.xml"
+                )
+            )
+        )
+
+        AlignedZipWriter(outputFile).use { w ->
+            w.writeDeflatedEntry(
+                "AndroidManifest.xml",
+                buildManifestAxml(packageName, useUtf8 = true, labelLiteral = "Muse", iconResId = iconXmlResId)
+            )
+            w.writeStoredEntry("resources.arsc", arsc, AlignedZipWriter.ALIGN_DEFAULT)
+            w.writeDeflatedEntry("classes.dex", "dex\n035\u0000FAKE_DEX".toByteArray())
+            w.writeDeflatedEntry("res/bi2.xml", adaptiveXml)
+            w.writeDeflatedEntry("res/js.xml", bgXml)
+            w.writeDeflatedEntry("res/jt.xml", fgVectorXml)
+        }
+        return adaptiveXml to bgXml
+    }
+
+    /**
+     * Membangun APK fixture dengan `android:icon` menunjuk langsung ke vector XML (non-adaptive)
+     * tanpa PNG ikon sama sekali.
+     */
+    fun buildDirectVectorIconApk(outputFile: File, packageName: String) {
+        val iconResId = 0x7F080001
+        val vectorXml = buildVectorDrawableAxml()
+        val arsc = buildArscWithTypeChunks(
+            packageName = packageName,
+            useUtf8 = true,
+            typeChunks = listOf(
+                0x08 to listOf(0x0001 to "res/drawable/ic_vector_app.xml")
+            )
+        )
+
+        AlignedZipWriter(outputFile).use { w ->
+            w.writeDeflatedEntry(
+                "AndroidManifest.xml",
+                buildManifestAxml(packageName, useUtf8 = true, labelLiteral = "VectorApp", iconResId = iconResId)
+            )
+            w.writeStoredEntry("resources.arsc", arsc, AlignedZipWriter.ALIGN_DEFAULT)
+            w.writeDeflatedEntry("classes.dex", "dex\n035\u0000FAKE_DEX".toByteArray())
+            w.writeDeflatedEntry("res/drawable/ic_vector_app.xml", vectorXml)
+        }
+    }
+
     private data class AttrSpec(
         val nsIdx: Int,
         val nameIdx: Int,

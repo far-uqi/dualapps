@@ -360,5 +360,88 @@ class CloneIdentityPatcherTest {
         assertEquals("xxhdpi", IconProcessor.densityForResourcePath("res/mipmap-xxhdpi/ic_launcher.png"))
         assertEquals("xxxhdpi", IconProcessor.densityForResourcePath("res/mipmap-xxxhdpi/ic_launcher.png"))
         assertEquals(mapOf("mdpi" to 48, "hdpi" to 72, "xhdpi" to 96, "xxhdpi" to 144, "xxxhdpi" to 192), IconProcessor.DENSITY_SIZES)
+        assertEquals("adaptive_foreground", IconProcessor.ADAPTIVE_FOREGROUND_KEY)
+        assertEquals(432, IconProcessor.ADAPTIVE_FOREGROUND_SIZE_PX)
+    }
+
+    @Test
+    fun retargetsAdaptiveIconVectorForegroundToCustomPngPreservingBackgroundAndXml() {
+        val inputApk = tempFolder.newFile("vector-adaptive-in.apk")
+        val outputApk = tempFolder.newFile("vector-adaptive-out.apk")
+        val pkg = "com.facebook.aura"
+        val (expectedAdaptiveXml, expectedBgXml) = BinaryFixtureBuilder.buildVectorAdaptiveIconApk(inputApk, pkg)
+
+        val fg432Png = byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47, 0x04, 0x32)
+        val customPngs = LinkedHashMap(sampleDensityPngs()).apply {
+            put(IconProcessor.ADAPTIVE_FOREGROUND_KEY, fg432Png)
+        }
+
+        val result = CloneIdentityPatcher.applyIdentity(
+            inputApk = inputApk,
+            outputApk = outputApk,
+            newLabel = "Muse 2",
+            customIconPngs = customPngs
+        )
+
+        assertTrue(result.labelPatched)
+        assertTrue(result.retargetedIconEntries.contains("res/drawable/ic_launcher_foreground.png"))
+
+        ZipFile(outputApk).use { zip ->
+            // XML vector foreground lama dihapus, PNG baru ditulis dengan ukuran 432px
+            assertTrue("res/jt.xml seharusnya dihapus", zip.getEntry("res/jt.xml") == null)
+            val newFgEntry = zip.getEntry("res/drawable/ic_launcher_foreground.png")
+            assertTrue("PNG foreground baru harus ada", newFgEntry != null)
+            assertArrayEquals(fg432Png, zip.getInputStream(newFgEntry).readBytes())
+
+            // Background dan XML adaptive-icon asli tetap utuh
+            assertArrayEquals(expectedAdaptiveXml, zip.getInputStream(zip.getEntry("res/bi2.xml")).readBytes())
+            assertArrayEquals(expectedBgXml, zip.getInputStream(zip.getEntry("res/js.xml")).readBytes())
+
+            // resources.arsc kini mengarahkan 0x7F0800AE ke path PNG baru
+            val patchedArsc = zip.getInputStream(zip.getEntry("resources.arsc")).readBytes()
+            assertEquals(
+                listOf("res/drawable/ic_launcher_foreground.png"),
+                ArscPatcher.readStringResourceValues(patchedArsc, 0x7F0800AE)
+            )
+            // Background resource 0x7F0800AD tidak berubah
+            assertEquals(
+                listOf("res/js.xml"),
+                ArscPatcher.readStringResourceValues(patchedArsc, 0x7F0800AD)
+            )
+            // Label juga ikut terpatch
+            val manifest = zip.getInputStream(zip.getEntry("AndroidManifest.xml")).readBytes()
+            assertEquals(AxmlPatcher.LabelTarget.Literal("Muse 2"), AxmlPatcher.readApplicationLabel(manifest))
+        }
+    }
+
+    @Test
+    fun retargetsDirectVectorIconFromManifestAndroidIconToCustomPng() {
+        val inputApk = tempFolder.newFile("direct-vector-in.apk")
+        val outputApk = tempFolder.newFile("direct-vector-out.apk")
+        val pkg = "com.example.vectoronly"
+        BinaryFixtureBuilder.buildDirectVectorIconApk(inputApk, pkg)
+
+        val customPngs = sampleDensityPngs()
+        val result = CloneIdentityPatcher.applyIdentity(
+            inputApk = inputApk,
+            outputApk = outputApk,
+            newLabel = null,
+            customIconPngs = customPngs
+        )
+
+        assertTrue(result.retargetedIconEntries.contains("res/drawable/ic_launcher_custom.png"))
+
+        ZipFile(outputApk).use { zip ->
+            assertTrue(zip.getEntry("res/drawable/ic_vector_app.xml") == null)
+            val newIconEntry = zip.getEntry("res/drawable/ic_launcher_custom.png")
+            assertTrue(newIconEntry != null)
+            assertArrayEquals(customPngs["xxxhdpi"], zip.getInputStream(newIconEntry).readBytes())
+
+            val patchedArsc = zip.getInputStream(zip.getEntry("resources.arsc")).readBytes()
+            assertEquals(
+                listOf("res/drawable/ic_launcher_custom.png"),
+                ArscPatcher.readStringResourceValues(patchedArsc, 0x7F080001)
+            )
+        }
     }
 }

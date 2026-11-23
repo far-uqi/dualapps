@@ -27,6 +27,9 @@ object IconProcessor {
         "xxxhdpi" to 192
     )
 
+    const val ADAPTIVE_FOREGROUND_KEY = "adaptive_foreground"
+    const val ADAPTIVE_FOREGROUND_SIZE_PX = 432 // 108dp @ xxxhdpi
+
     private const val MAX_STORED_PREVIEW_PX = 512
 
     /**
@@ -95,25 +98,35 @@ object IconProcessor {
         }
 
         return try {
-            val result = LinkedHashMap<String, ByteArray>(DENSITY_SIZES.size)
+            val result = LinkedHashMap<String, ByteArray>(DENSITY_SIZES.size + 1)
             for ((density, sizePx) in DENSITY_SIZES) {
-                val resized = Bitmap.createScaledBitmap(square, sizePx, sizePx, true)
-                try {
-                    val baos = ByteArrayOutputStream()
-                    if (!resized.compress(Bitmap.CompressFormat.PNG, 100, baos)) {
-                        throw CloneException(
-                            CloneError.ICON_PATCH_FAILED,
-                            "Gagal mengompresi ikon PNG untuk densitas $density."
-                        )
-                    }
-                    result[density] = baos.toByteArray()
-                } finally {
-                    if (resized !== square) resized.recycle()
-                }
+                result[density] = scaleAndEncodePng(square, sizePx, density)
             }
+            // Ukuran foreground adaptive 432x432 px (108dp @ xxxhdpi) agar tajam tanpa upscale blur
+            result[ADAPTIVE_FOREGROUND_KEY] = scaleAndEncodePng(
+                square,
+                ADAPTIVE_FOREGROUND_SIZE_PX,
+                ADAPTIVE_FOREGROUND_KEY
+            )
             result
         } finally {
             square.recycle()
+        }
+    }
+
+    private fun scaleAndEncodePng(square: Bitmap, sizePx: Int, label: String): ByteArray {
+        val resized = Bitmap.createScaledBitmap(square, sizePx, sizePx, true)
+        return try {
+            val baos = ByteArrayOutputStream()
+            if (!resized.compress(Bitmap.CompressFormat.PNG, 100, baos)) {
+                throw CloneException(
+                    CloneError.ICON_PATCH_FAILED,
+                    "Gagal mengompresi ikon PNG untuk $label ($sizePx px)."
+                )
+            }
+            baos.toByteArray()
+        } finally {
+            if (resized !== square) resized.recycle()
         }
     }
 

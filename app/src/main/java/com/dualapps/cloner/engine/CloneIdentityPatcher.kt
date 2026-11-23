@@ -17,15 +17,27 @@ import java.util.zip.ZipFile
  *     (mendukung UTF-8 dan UTF-16LE).
  * - Ikon custom:
  *   - Mengganti `res/mipmap-<density>/ic_launcher*.png` (kecuali `*background*`) dengan PNG hasil resize per densitas.
- *   - Jika aplikasi memakai adaptive icon (`res/mipmap-anydpi-v26/ic_launcher*.xml` atau referensi XML dari
- *     `<application android:icon>`), mengganti entri PNG foreground-nya sambil mempertahankan background asli.
+ *   - Menelusuri rantai referensi `android:icon` / `android:roundIcon` → adaptive XML → foreground drawable (atau
+ *     langsung drawable).
+ *   - Jika file final berupa PNG, ganti PNG tersebut di tempat.
+ *   - Jika file final berupa vector XML (tanpa PNG), jalankan fallback retarget resource di `resources.arsc`
+ *     (`.xml` → `.png` baru), hapus entri XML lama dari ZIP, dan tulis PNG baru (432×432 px untuk foreground adaptive)
+ *     sambil mempertahankan background dan XML adaptive-icon asli.
  *   - Jika tidak ada entri ikon yang cocok, gagal dengan [CloneError.ICON_PATCH_FAILED].
  */
 object CloneIdentityPatcher {
 
     data class IdentityPatchResult(
         val labelPatched: Boolean,
-        val replacedIconEntries: List<String>
+        val replacedIconEntries: List<String>,
+        val retargetedIconEntries: List<String> = emptyList()
+    )
+
+    private data class VectorRetargetPlan(
+        val resId: Int,
+        val oldXmlPaths: Set<String>,
+        val newPngPath: String,
+        val isAdaptiveForeground: Boolean
     )
 
     fun applyIdentity(
@@ -80,26 +92,54 @@ object CloneIdentityPatcher {
                     }
                 }
 
-                // 2. Temukan semua entri ikon yang harus diganti bila ikon custom dipilih
-                val targetIconEntries = LinkedHashSet<String>()
+                // 2. Temukan entri ikon PNG yang diganti langsung DAN/ATAU rencana retarget vector XML → PNG
+                val targetPngEntries = LinkedHashSet<String>()
+                val retargetPlans = mutableListOf<VectorRetargetPlan>()
                 if (shouldPatchIcon) {
                     checkCancelled()
-                    collectTargetIconEntries(zip, entryNames, manifestBytes, arscBytes, targetIconEntries)
-                    if (targetIconEntries.isEmpty()) {
+                    planIconReplacements(
+                        zip = zip,
+                        entryNames = entryNames,
+                        manifestBytes = manifestBytes,
+                        arscBytes = arscBytes,
+                        outTargetPngEntries = targetPngEntries,
+                        outRetargetPlans = retargetPlans
+                    )
+                    if (targetPngEntries.isEmpty() && retargetPlans.isEmpty()) {
                         throw CloneException(
                             CloneError.ICON_PATCH_FAILED,
-                            "Tidak ditemukan entri ikon launcher (res/mipmap-*/ic_launcher*.png atau foreground adaptive icon) di APK."
+                            "Tidak ditemukan entri ikon launcher (PNG maupun vector XML yang dapat di-retarget) di APK."
                         )
                     }
+
+                    // Terapkan retarget resource (.xml -> .png) di resources.arsc
+                    for (plan in retargetPlans) {
+                        checkCancelled()
+                        arscBytes = ArscPatcher.retargetFileResource(arscBytes, plan.resId, plan.newPngPath)
+                        arscModified = true
+                    }
+                }
+
+                val removedXmlEntries = retargetPlans.flatMapTo(LinkedHashSet()) { it.oldXmlPaths }
+                val newPngEntries = LinkedHashMap<String, ByteArray>()
+                for (plan in retargetPlans) {
+                    val pngBytes = selectPngForRetarget(customIconPngs!!, plan.isAdaptiveForeground)
+                    newPngEntries[plan.newPngPath] = pngBytes
                 }
 
                 // 3. Tulis ulang APK dengan menjaga metode & alignment entri STORED
                 val replacedIcons = mutableListOf<String>()
+                val retargetedIcons = mutableListOf<String>()
                 AlignedZipWriter(outputApk).use { writer ->
                     for (entry in entries) {
                         checkCancelled()
                         if (entry.isDirectory) continue
                         val name = entry.name
+
+                        // Hapus entri XML vector lama yang sudah di-retarget ke PNG baru
+                        if (name in removedXmlEntries) {
+                            continue
+                        }
 
                         when {
                             name == "AndroidManifest.xml" && manifestModified -> {
@@ -108,11 +148,8 @@ object CloneIdentityPatcher {
                             name == "resources.arsc" && arscModified -> {
                                 writer.writeStoredEntry(name, arscBytes, AlignedZipWriter.ALIGN_DEFAULT)
                             }
-                            name in targetIconEntries -> {
-                                val density = IconProcessor.densityForResourcePath(name)
-                                val pngBytes = customIconPngs!![density]
-                                    ?: customIconPngs["xxxhdpi"]
-                                    ?: customIconPngs.values.first()
+                            name in targetPngEntries -> {
+                                val pngBytes = selectPngForPath(customIconPngs!!, name)
                                 if (entry.method == ZipEntry.STORED) {
                                     writer.writeStoredEntry(name, pngBytes, AlignedZipWriter.alignmentForStored(name))
                                 } else {
@@ -130,11 +167,19 @@ object CloneIdentityPatcher {
                             }
                         }
                     }
+
+                    // Tulis entri PNG baru hasil retarget (STORED align 4 byte agar siap dibaca AssetManager)
+                    for ((newPath, pngBytes) in newPngEntries) {
+                        checkCancelled()
+                        writer.writeStoredEntry(newPath, pngBytes, AlignedZipWriter.ALIGN_DEFAULT)
+                        retargetedIcons.add(newPath)
+                    }
                 }
 
                 return IdentityPatchResult(
                     labelPatched = shouldPatchLabel,
-                    replacedIconEntries = replacedIcons
+                    replacedIconEntries = replacedIcons,
+                    retargetedIconEntries = retargetedIcons
                 )
             }
         } catch (e: CloneException) {
@@ -151,21 +196,26 @@ object CloneIdentityPatcher {
         }
     }
 
-    private fun collectTargetIconEntries(
+    private fun planIconReplacements(
         zip: ZipFile,
         entryNames: Set<String>,
         manifestBytes: ByteArray,
         arscBytes: ByteArray,
-        outTargets: MutableSet<String>
+        outTargetPngEntries: MutableSet<String>,
+        outRetargetPlans: MutableList<VectorRetargetPlan>
     ) {
-        // A. Pencocokan langsung res/mipmap-*/ic_launcher*.png (kecuali *background*)
+        val reservedPaths = LinkedHashSet<String>(entryNames)
+        val retargetedResIds = LinkedHashSet<Int>()
+
+        // A. Pencocokan langsung res/mipmap-<density>/ic_launcher*.png (kecuali *background*)
         for (name in entryNames) {
             if (isStandardLauncherPng(name)) {
-                outTargets.add(name)
+                outTargetPngEntries.add(name)
             }
         }
 
-        // B. Resolusi adaptive icon XML (res/mipmap-anydpi-v26/ic_launcher*.xml)
+        // B. Kumpulkan adaptive-icon XML standar (res/mipmap-anydpi-v26/ic_launcher*.xml)
+        //    serta pasangan (resId, xmlPath) dari <application android:icon / android:roundIcon>
         val adaptiveXmlPaths = LinkedHashSet<String>()
         for (name in entryNames) {
             val lower = name.lowercase()
@@ -177,31 +227,121 @@ object CloneIdentityPatcher {
             }
         }
 
-        // C. Resolusi resource ID dari <application android:icon / android:roundIcon>
+        val directVectorCandidates = LinkedHashMap<Int, MutableSet<String>>()
         val iconRefs = runCatching { AxmlPatcher.readApplicationIconRefs(manifestBytes) }.getOrDefault(emptyList())
         for (refId in iconRefs) {
             val paths = runCatching { ArscPatcher.readStringResourceValues(arscBytes, refId) }.getOrDefault(emptyList())
+            val xmlPathsForRef = LinkedHashSet<String>()
+            var hasPngForRef = false
             for (path in paths) {
                 if (path !in entryNames) continue
                 val lower = path.lowercase()
                 when {
-                    lower.endsWith(".png") && !lower.contains("background") -> outTargets.add(path)
-                    lower.endsWith(".xml") -> adaptiveXmlPaths.add(path)
+                    lower.endsWith(".png") && !lower.contains("background") -> {
+                        outTargetPngEntries.add(path)
+                        hasPngForRef = true
+                    }
+                    lower.endsWith(".xml") -> {
+                        xmlPathsForRef.add(path)
+                    }
+                }
+            }
+            // Pisahkan XML adaptive-icon vs XML vector drawable langsung pada android:icon
+            for (xmlPath in xmlPathsForRef) {
+                val xmlEntry = zip.getEntry(xmlPath) ?: continue
+                val xmlBytes = zip.getInputStream(xmlEntry).use { it.readBytes() }
+                val fgRef = AxmlPatcher.readAdaptiveIconForegroundRef(xmlBytes)
+                if (fgRef != null) {
+                    adaptiveXmlPaths.add(xmlPath)
+                } else if (!hasPngForRef) {
+                    directVectorCandidates.getOrPut(refId) { LinkedHashSet() }.add(xmlPath)
                 }
             }
         }
 
-        // D. Untuk setiap adaptive-icon XML, baca <foreground android:drawable="@..."/> lalu ganti PNG foreground-nya
+        // C. Untuk setiap adaptive-icon XML, telusuri <foreground android:drawable="@..."/>
         for (xmlPath in adaptiveXmlPaths) {
             val xmlEntry = zip.getEntry(xmlPath) ?: continue
             val xmlBytes = zip.getInputStream(xmlEntry).use { it.readBytes() }
             val fgRef = AxmlPatcher.readAdaptiveIconForegroundRef(xmlBytes) ?: continue
             val fgPaths = runCatching { ArscPatcher.readStringResourceValues(arscBytes, fgRef) }.getOrDefault(emptyList())
-            for (fgPath in fgPaths) {
-                if (fgPath in entryNames && fgPath.lowercase().endsWith(".png")) {
-                    outTargets.add(fgPath)
-                }
+
+            val existingPngPaths = fgPaths.filter { it in entryNames && it.lowercase().endsWith(".png") }
+            val existingXmlPaths = fgPaths.filter { it in entryNames && it.lowercase().endsWith(".xml") }
+
+            if (existingPngPaths.isNotEmpty()) {
+                outTargetPngEntries.addAll(existingPngPaths)
+            } else if (existingXmlPaths.isNotEmpty() && retargetedResIds.add(fgRef)) {
+                val newPath = allocateUniquePngPath(
+                    preferred = "res/drawable/ic_launcher_foreground.png",
+                    fallbackPrefix = "res/drawable/dualapps_fg_${fgRef.toString(16)}",
+                    reserved = reservedPaths
+                )
+                outRetargetPlans.add(
+                    VectorRetargetPlan(
+                        resId = fgRef,
+                        oldXmlPaths = existingXmlPaths.toSet(),
+                        newPngPath = newPath,
+                        isAdaptiveForeground = true
+                    )
+                )
             }
+        }
+
+        // D. Fallback untuk android:icon / android:roundIcon yang menunjuk langsung ke vector XML (non-adaptive)
+        for ((iconResId, xmlPaths) in directVectorCandidates) {
+            if (xmlPaths.isEmpty() || !retargetedResIds.add(iconResId)) continue
+            val newPath = allocateUniquePngPath(
+                preferred = "res/drawable/ic_launcher_custom.png",
+                fallbackPrefix = "res/drawable/dualapps_icon_${iconResId.toString(16)}",
+                reserved = reservedPaths
+            )
+            outRetargetPlans.add(
+                VectorRetargetPlan(
+                    resId = iconResId,
+                    oldXmlPaths = xmlPaths,
+                    newPngPath = newPath,
+                    isAdaptiveForeground = false
+                )
+            )
+        }
+    }
+
+    private fun allocateUniquePngPath(
+        preferred: String,
+        fallbackPrefix: String,
+        reserved: MutableSet<String>
+    ): String {
+        if (reserved.add(preferred)) return preferred
+        var candidate = "$fallbackPrefix.png"
+        var index = 2
+        while (!reserved.add(candidate)) {
+            candidate = "${fallbackPrefix}_$index.png"
+            index++
+        }
+        return candidate
+    }
+
+    private fun selectPngForPath(customIconPngs: Map<String, ByteArray>, entryPath: String): ByteArray {
+        val density = IconProcessor.densityForResourcePath(entryPath)
+        return customIconPngs[density]
+            ?: customIconPngs["xxxhdpi"]
+            ?: customIconPngs[IconProcessor.ADAPTIVE_FOREGROUND_KEY]
+            ?: customIconPngs.values.first()
+    }
+
+    private fun selectPngForRetarget(
+        customIconPngs: Map<String, ByteArray>,
+        isAdaptiveForeground: Boolean
+    ): ByteArray {
+        return if (isAdaptiveForeground) {
+            customIconPngs[IconProcessor.ADAPTIVE_FOREGROUND_KEY]
+                ?: customIconPngs["xxxhdpi"]
+                ?: customIconPngs.values.first()
+        } else {
+            customIconPngs["xxxhdpi"]
+                ?: customIconPngs[IconProcessor.ADAPTIVE_FOREGROUND_KEY]
+                ?: customIconPngs.values.first()
         }
     }
 

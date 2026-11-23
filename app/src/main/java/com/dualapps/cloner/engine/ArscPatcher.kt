@@ -124,17 +124,52 @@ object ArscPatcher {
      * entri normal, OFFSET16, SPARSE, dan COMPACT (AAPT2 Android 13+).
      */
     fun patchStringResource(arscBytes: ByteArray, resId: Int, newValue: String): ByteArray {
+        return patchResourceStringValue(
+            arscBytes = arscBytes,
+            resId = resId,
+            newValue = newValue,
+            errorCode = CloneError.LABEL_PATCH_FAILED,
+            emptyValueMessage = "Nama launcher clone tidak boleh kosong."
+        )
+    }
+
+    /**
+     * Mengarahkan ulang path berkas resource (mis. drawable vector `.xml` → `.png`) pada [resId]
+     * di `resources.arsc` dengan menambahkan [newPath] ke global StringPool dan menulis ulang
+     * indeks string entri resource tersebut.
+     */
+    fun retargetFileResource(arscBytes: ByteArray, resId: Int, newPath: String): ByteArray {
+        return patchResourceStringValue(
+            arscBytes = arscBytes,
+            resId = resId,
+            newValue = newPath,
+            errorCode = CloneError.ICON_PATCH_FAILED,
+            emptyValueMessage = "Path target resource ikon tidak boleh kosong."
+        )
+    }
+
+    private fun patchResourceStringValue(
+        arscBytes: ByteArray,
+        resId: Int,
+        newValue: String,
+        errorCode: CloneError,
+        emptyValueMessage: String
+    ): ByteArray {
         if (newValue.isBlank()) {
-            throw CloneException(CloneError.LABEL_PATCH_FAILED, "Nama launcher clone tidak boleh kosong.")
+            throw CloneException(errorCode, emptyValueMessage)
         }
 
         val (tableHeaderSize, tableSize) = try {
             validateTableHeader(arscBytes)
         } catch (e: CloneException) {
-            throw CloneException(CloneError.LABEL_PATCH_FAILED, e.message, e)
+            throw CloneException(errorCode, e.message, e)
         }
 
-        val (poolOffset, poolSize, globalPool) = parseGlobalStringPool(arscBytes, tableHeaderSize, tableSize)
+        val (poolOffset, poolSize, globalPool) = try {
+            parseGlobalStringPool(arscBytes, tableHeaderSize, tableSize)
+        } catch (e: CloneException) {
+            throw CloneException(errorCode, e.message, e)
+        }
         val afterPoolOffset = poolOffset + poolSize
         val restBytes = arscBytes.copyOfRange(afterPoolOffset, tableSize)
 
@@ -145,7 +180,7 @@ object ArscPatcher {
         var targetResId = resId
         var patchedCount = 0
 
-        // Ikuti maksimal 3 hop referensi resource bila @string berupa alias ke @string lain.
+        // Ikuti maksimal 3 hop referensi resource bila berupa alias ke resource lain.
         for (hop in 0 until 4) {
             var nextRefId: Int? = null
             visitMatchingEntries(restBytes, targetResId) { entry ->
@@ -167,8 +202,8 @@ object ArscPatcher {
 
         if (patchedCount == 0) {
             throw CloneException(
-                CloneError.LABEL_PATCH_FAILED,
-                "Entri string resource 0x${resId.toString(16)} tidak ditemukan di resources.arsc."
+                errorCode,
+                "Entri resource 0x${resId.toString(16)} tidak ditemukan di resources.arsc."
             )
         }
 
@@ -192,8 +227,8 @@ object ArscPatcher {
         val verifiedValues = readStringResourceValues(result, resId)
         if (!verifiedValues.contains(newValue)) {
             throw CloneException(
-                CloneError.LABEL_PATCH_FAILED,
-                "Verifikasi patch @string 0x${resId.toString(16)} gagal."
+                errorCode,
+                "Verifikasi patch resource 0x${resId.toString(16)} gagal."
             )
         }
         return result
