@@ -2,7 +2,7 @@
 
 > **English:** Dualapps is a personal Android app cloner. Pick an installed app and create a second copy with a new package name, so two accounts can run side by side. Everything runs on your device — no account, no cloud, no ads.
 
-[⬇️ Unduh APK terbaru (v1.0.0)](https://github.com/far-uqi/dualapps/releases/latest/download/dualapps-v1.0.0.apk)
+[⬇️ Unduh APK terbaru (v1.0)](https://github.com/far-uqi/dualapps/releases/tag/v1.0)
 
 Dualapps adalah aplikasi Android untuk meng-clone aplikasi yang sudah terpasang di HP kamu menjadi salinan kedua dengan nama paket baru (`.clone`, `.clone2`, ...), supaya dua akun bisa jalan berdampingan. Dibuat untuk pemakaian pribadi, tanpa iklan, tanpa akun, tanpa cloud — semua proses berjalan di perangkatmu sendiri.
 
