@@ -8,6 +8,7 @@ Dualapps adalah aplikasi Android untuk meng-clone aplikasi yang sudah terpasang 
 
 ## ✨ Fitur (v1.0)
 
+- **Tanpa iklan** — tidak ada iklan, tidak ada akun, tidak ada pelacakan. Semua proses berjalan di perangkatmu.
 - **Clone aplikasi terpasang** — pilih aplikasi dari daftar, atur nama clone dan nama paket otomatis (`.clone`, `.clone2`, ...), lalu clone dengan progress 7 langkah yang bisa dibatalkan.
 - **Nama & ikon custom** — ganti nama launcher dan pilih gambar dari galeri sebagai ikon clone.
 - **Clone dari berkas APK** — tombol `+` untuk memilih berkas `.apk` dari penyimpanan dan meng-clone-nya.
@@ -17,7 +18,7 @@ Dualapps adalah aplikasi Android untuk meng-clone aplikasi yang sudah terpasang 
 
 ## ⬇️ Unduh & Pasang
 
-1. Unduh APK terbaru dari halaman [Releases](https://github.com/far-uqi/dualapps/releases/latest) — berkas `dualapps-v1.0.0.apk`.
+1. Unduh APK terbaru dari halaman [Releases](https://github.com/far-uqi/dualapps/releases/latest) — berkas `dualapps-v1.0.apk`.
 2. Buka berkasnya di HP. Jika diminta, izinkan **"Install unknown apps"** untuk sumber ini (browser/file manager yang kamu pakai).
 3. Jika Play Protect menampilkan peringatan, ketuk **"Detail selengkapnya" → "Tetap pasang"**.
 4. Buka Dualapps dari launcher.
@@ -67,6 +68,10 @@ Dengan mengunduh dan memakai Dualapps, kamu menyetujui:
 ```
 
 Stack: Android native Kotlin (Views + ViewBinding, tanpa Compose), Gradle 8.7, AGP 8.5.2, minSdk 26.
+
+## 📄 Lisensi
+
+Proyek ini dilisensikan di bawah [Lisensi MIT](LICENSE) — bebas dipakai, diubah, dan disebarluaskan dengan tetap mencantumkan lisensi dan pemberitahuan hak cipta.
 
 ## ⚖️ Disclaimer
 
