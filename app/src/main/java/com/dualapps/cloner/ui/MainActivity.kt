@@ -69,7 +69,7 @@ class MainActivity : AppCompatActivity() {
             showSettingsDialog()
         }
         binding.btnResults.setOnClickListener {
-            Toast.makeText(this, R.string.msg_results_phase_note, Toast.LENGTH_SHORT).show()
+            startActivity(ResultsActivity.createIntent(this))
         }
         binding.btnSearchFocus.setOnClickListener {
             binding.etSearch.requestFocus()

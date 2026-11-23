@@ -2,6 +2,8 @@ package com.dualapps.cloner.engine
 
 import com.dualapps.cloner.model.CloneError
 import com.dualapps.cloner.model.CloneException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -142,5 +144,66 @@ class ClonePipelineTest {
         )
         val invalidSyntax = PackageNameValidator.validate("invalid_single_segment", "com.app.demo") { false }
         assertTrue(invalidSyntax is PackageNameValidator.ValidationResult.Invalid)
+    }
+
+    @Test
+    fun cancelsMidPipelineWithCancelledErrorAndCleansTempDir() = runBlocking {
+        val cacheDir = tempFolder.newFolder("cacheCancel")
+        val filesDir = tempFolder.newFolder("filesCancel")
+        val sourceApk = tempFolder.newFile("source-cancel.apk")
+        val oldPkg = "com.dualapps.cloner"
+        val newPkg = "com.dualapps.cloner.clone"
+        BinaryFixtureBuilder.buildFixtureApk(sourceApk, oldPkg)
+
+        val pipeline = ClonePipeline(
+            cacheDir = cacheDir,
+            filesDir = filesDir,
+            keystoreManager = DeviceKeystoreManager(filesDir),
+            archivePackageReader = { newPkg },
+            isPackageInstalled = { false }
+        )
+
+        var caughtError: CloneError? = null
+        var completedNormally = false
+        val startedSteps = mutableListOf<CloneStep>()
+        lateinit var cloneJob: Job
+
+        cloneJob = launch {
+            try {
+                pipeline.execute(
+                    request = CloneRequest(
+                        sourceApkPath = sourceApk.absolutePath,
+                        isSplitApk = false,
+                        originalAppName = "Dualapps",
+                        originalPackageName = oldPkg,
+                        cloneName = "Dualapps 2",
+                        clonePackageName = newPkg
+                    ),
+                    onStepStart = { step ->
+                        startedSteps.add(step)
+                        // Batalkan Coroutine tepat saat memasuki langkah SIGN_AND_VERIFY
+                        // (setelah source.apk dan unsigned.apk sempat dibuat di workDir).
+                        if (step == CloneStep.SIGN_AND_VERIFY) {
+                            cloneJob.cancel()
+                        }
+                    }
+                )
+                completedNormally = true
+            } catch (e: CloneException) {
+                caughtError = e.error
+            }
+        }
+        cloneJob.join()
+
+        assertTrue("Pipeline seharusnya berhenti karena dibatalkan", !completedNormally)
+        assertEquals(CloneError.CANCELLED, caughtError)
+        assertTrue(startedSteps.contains(CloneStep.SIGN_AND_VERIFY))
+        assertTrue(!startedSteps.contains(CloneStep.VERIFY_ARCHIVE))
+
+        // Pastikan tidak ada APK tersimpan di folder hasil dan folder kerja sementara bersih
+        val clonedDir = File(filesDir, "cloned_apks")
+        assertTrue(!clonedDir.exists() || clonedDir.listFiles().isNullOrEmpty())
+        val workRoot = File(cacheDir, "clone_work")
+        assertTrue(!workRoot.exists() || workRoot.listFiles().isNullOrEmpty())
     }
 }

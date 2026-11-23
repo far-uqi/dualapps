@@ -42,4 +42,28 @@ object ApkInstaller {
         context.startActivity(installIntent)
         return true
     }
+
+    fun shareApk(context: Context, apkFile: File, displayName: String): Boolean {
+        if (!apkFile.exists()) {
+            Toast.makeText(context, R.string.err_apk_not_found, Toast.LENGTH_SHORT).show()
+            return false
+        }
+
+        val authority = "${context.packageName}.fileprovider"
+        val apkUri = FileProvider.getUriForFile(context, authority, apkFile)
+        val shareIntent = Intent(Intent.ACTION_SEND).apply {
+            type = "application/vnd.android.package-archive"
+            putExtra(Intent.EXTRA_STREAM, apkUri)
+            putExtra(Intent.EXTRA_SUBJECT, displayName)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        val chooser = Intent.createChooser(
+            shareIntent,
+            context.getString(R.string.chooser_share_apk, displayName)
+        ).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        context.startActivity(chooser)
+        return true
+    }
 }

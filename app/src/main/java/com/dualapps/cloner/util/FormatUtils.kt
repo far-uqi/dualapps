@@ -1,6 +1,9 @@
 package com.dualapps.cloner.util
 
+import java.text.SimpleDateFormat
+import java.util.Date
 import java.util.Locale
+import java.util.TimeZone
 
 object FormatUtils {
     private val LOCALE_ID = Locale("id", "ID")
@@ -16,5 +19,13 @@ object FormatUtils {
             bytes < 1024L * 1024L * 1024L -> String.format(LOCALE_ID, "%.1f MB", bytes / mb)
             else -> String.format(LOCALE_ID, "%.2f GB", bytes / gb)
         }
+    }
+
+    fun formatTimestamp(millis: Long, timeZone: TimeZone = TimeZone.getDefault()): String {
+        if (millis <= 0L) return "-"
+        val formatter = SimpleDateFormat("dd MMM yyyy, HH:mm", LOCALE_ID).apply {
+            this.timeZone = timeZone
+        }
+        return formatter.format(Date(millis))
     }
 }

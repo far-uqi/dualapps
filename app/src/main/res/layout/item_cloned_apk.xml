@@ -1,0 +1,159 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginBottom="14dp"
+    android:orientation="vertical">
+
+    <!-- Tab folder teal/ungu mencuat di atas kartu -->
+    <TextView
+        android:id="@+id/tvFolderTab"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="14dp"
+        android:layout_marginBottom="-2.5dp"
+        android:background="@drawable/bg_neo_folder_tab_teal"
+        android:fontFamily="sans-serif-black"
+        android:paddingHorizontal="12dp"
+        android:paddingVertical="4dp"
+        android:text="@string/tab_clone_result"
+        android:textColor="@color/ink_primary"
+        android:textSize="10.5sp"
+        android:textStyle="bold" />
+
+    <!-- Kartu utama hasil clone -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@drawable/bg_neo_card"
+        android:orientation="vertical"
+        android:paddingStart="14dp"
+        android:paddingTop="14dp"
+        android:paddingEnd="18dp"
+        android:paddingBottom="18dp">
+
+        <TextView
+            android:id="@+id/tvCloneName"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:fontFamily="sans-serif-black"
+            android:maxLines="1"
+            android:textColor="@color/ink_primary"
+            android:textSize="17sp"
+            android:textStyle="bold"
+            tools:text="Dualapps 2" />
+
+        <TextView
+            android:id="@+id/tvClonePackage"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="3dp"
+            android:ellipsize="end"
+            android:fontFamily="monospace"
+            android:maxLines="1"
+            android:textColor="@color/ink_muted"
+            android:textSize="12sp"
+            tools:text="com.dualapps.cloner.clone" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/tvApkSize"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:fontFamily="sans-serif-medium"
+                android:textColor="@color/ink_primary"
+                android:textSize="12.5sp"
+                android:textStyle="bold"
+                tools:text="8,5 MB" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginHorizontal="8dp"
+                android:text="•"
+                android:textColor="@color/ink_muted"
+                android:textSize="12sp" />
+
+            <TextView
+                android:id="@+id/tvCreatedAt"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:textColor="@color/ink_muted"
+                android:textSize="12sp"
+                tools:text="23 Nov 2026, 08:35" />
+        </LinearLayout>
+
+        <!-- Baris tombol aksi: Pasang, Bagikan, Hapus -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/btnInstall"
+                android:layout_width="0dp"
+                android:layout_height="44dp"
+                android:layout_weight="1.2"
+                android:background="@drawable/bg_neo_button_yellow"
+                android:clickable="true"
+                android:focusable="true"
+                android:fontFamily="sans-serif-black"
+                android:gravity="center"
+                android:paddingEnd="4dp"
+                android:paddingBottom="4dp"
+                android:text="@string/action_install"
+                android:textColor="@color/ink_primary"
+                android:textSize="13sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/btnShare"
+                android:layout_width="0dp"
+                android:layout_height="44dp"
+                android:layout_marginStart="8dp"
+                android:layout_weight="1"
+                android:background="@drawable/bg_neo_button_white"
+                android:clickable="true"
+                android:focusable="true"
+                android:fontFamily="sans-serif-black"
+                android:gravity="center"
+                android:paddingEnd="4dp"
+                android:paddingBottom="4dp"
+                android:text="@string/action_share"
+                android:textColor="@color/ink_primary"
+                android:textSize="13sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/btnDelete"
+                android:layout_width="0dp"
+                android:layout_height="44dp"
+                android:layout_marginStart="8dp"
+                android:layout_weight="0.9"
+                android:background="@drawable/bg_neo_button_white"
+                android:clickable="true"
+                android:focusable="true"
+                android:fontFamily="sans-serif-black"
+                android:gravity="center"
+                android:paddingEnd="4dp"
+                android:paddingBottom="4dp"
+                android:text="@string/action_delete"
+                android:textColor="@color/ink_primary"
+                android:textSize="13sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+    </LinearLayout>
+
+</LinearLayout>

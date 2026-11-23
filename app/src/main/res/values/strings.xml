@@ -63,4 +63,39 @@
     <string name="label_apk_size_format">Ukuran APK: %1$s</string>
     <string name="err_apk_not_found">Berkas APK hasil clone tidak ditemukan.</string>
     <string name="msg_allow_unknown_sources">Izinkan Dualapps memasang aplikasi dari sumber ini, lalu tekan PASANG kembali.</string>
+
+    <!-- Layar Daftar Hasil -->
+    <string name="title_results">Hasil Clone</string>
+    <string name="section_results_count">APK Hasil Clone (%1$d)</string>
+    <string name="section_results_count_zero">APK Hasil Clone (0)</string>
+    <string name="empty_results_title">Belum ada APK hasil clone</string>
+    <string name="empty_results_desc">Pilih aplikasi dari layar utama lalu tekan CLONE. APK yang berhasil diverifikasi akan muncul di sini.</string>
+    <string name="action_share">BAGIKAN</string>
+    <string name="action_delete">HAPUS</string>
+    <string name="chooser_share_apk">Bagikan APK %1$s</string>
+    <string name="delete_confirm_title">Hapus Hasil Clone?</string>
+    <string name="delete_confirm_message">Berkas APK untuk %1$s (%2$s) akan dihapus dari penyimpanan Dualapps. Aplikasi yang sudah terpasang di perangkat tidak ikut terhapus.</string>
+    <string name="msg_result_deleted">Hasil clone berhasil dihapus.</string>
+    <string name="err_result_delete_failed">Gagal menghapus berkas hasil clone.</string>
+
+    <!-- Panduan Play Protect Statis -->
+    <string name="play_protect_banner_title">Diblokir Play Protect saat memasang?</string>
+    <string name="play_protect_banner_subtitle">Baca panduan resmi langkah yang bisa Anda pilih sendiri.</string>
+    <string name="play_protect_guide_title">Panduan Play Protect</string>
+    <string name="play_protect_why_tab">KENAPA DIBLOKIR</string>
+    <string name="play_protect_why_heading">Mengapa Play Protect mewaspadai hasil clone?</string>
+    <string name="play_protect_why_body">APK hasil clone berasal dari luar Google Play Store dan telah ditandatangani ulang menggunakan kunci penandatanganan unik milik perangkat ini. Karena tanda tangan digitalnya berbeda dari pengembang asli dan tidak terdaftar di Play Store, Google Play Protect secara wajar dapat menandai atau memblokir pemasangannya.</string>
+    <string name="play_protect_opt_a_tab">OPSI A — LANGSUNG DI DIALOG</string>
+    <string name="play_protect_opt_a_heading">Pilih "Detail selengkapnya" → "Tetap pasang"</string>
+    <string name="play_protect_opt_a_body">Saat dialog peringatan Google Play Protect muncul di tengah proses pemasangan, ketuk "Detail selengkapnya" (More details), lalu pilih "Tetap pasang" (Install anyway) bila opsi tersebut tersedia.</string>
+    <string name="play_protect_opt_b_tab">OPSI B — NONAKTIFKAN SEMENTARA</string>
+    <string name="play_protect_opt_b_heading">Nonaktifkan sementara lewat setelan Google Play Store</string>
+    <string name="play_protect_opt_b_body">Bila opsi "Tetap pasang" tidak muncul pada dialog, Anda dapat melakukannya sendiri secara manual:\n\n1. Buka aplikasi Google Play Store.\n2. Ketuk foto profil di pojok kanan atas.\n3. Pilih "Play Protect", lalu ketuk ikon Setelan (roda gigi) di kanan atas.\n4. Nonaktifkan sementara "Pindai aplikasi dengan Play Protect".\n5. Kembali ke Dualapps dan pasang APK hasil clone.\n6. SEGERA AKTIFKAN KEMBALI "Pindai aplikasi dengan Play Protect" setelah pemasangan selesai.</string>
+    <string name="play_protect_warning_title">PENGINGAT WAJIB &amp; PERINGATAN RISIKO</string>
+    <string name="play_protect_warning_body">Jangan lupa mengaktifkan lagi "Pindai aplikasi dengan Play Protect" segera setelah clone selesai dipasang! Membiarkan Play Protect nonaktif dalam waktu lama mengurangi perlindungan keamanan perangkat terhadap aplikasi berbahaya atau modifikasi tidak dikenal. Keputusan menonaktifkan sementara sepenuhnya berada di tangan Anda.</string>
+    <string name="play_protect_opt_c_tab">OPSI C — ALTERNATIF ADB</string>
+    <string name="play_protect_opt_c_heading">Pasang dari komputer (PC) lewat ADB</string>
+    <string name="play_protect_opt_c_body">Sebagai alternatif tanpa mengubah setelan Play Protect, gunakan tombol BAGIKAN untuk menyalin APK hasil clone ke komputer, aktifkan USB Debugging di Opsi Pengembang, hubungkan perangkat ke PC, lalu jalankan perintah berikut:</string>
+    <string name="play_protect_adb_command">adb install nama_berkas_clone.apk</string>
+    <string name="play_protect_footer_note">Catatan: Dualapps tidak pernah dan tidak bisa menonaktifkan Google Play Protect maupun package verifier Android secara otomatis.</string>
 </resources>

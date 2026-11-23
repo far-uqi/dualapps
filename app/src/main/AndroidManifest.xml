@@ -35,6 +35,14 @@
             android:name=".ui.CloneProgressActivity"
             android:exported="false" />
 
+        <activity
+            android:name=".ui.ResultsActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".ui.PlayProtectGuideActivity"
+            android:exported="false" />
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"
