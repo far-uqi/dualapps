@@ -40,7 +40,10 @@
     <string name="cd_back">Kembali</string>
     <string name="title_configure_clone">Atur Clone</string>
     <string name="tab_source_app">APLIKASI SUMBER</string>
+    <string name="tab_source_apk_file">BERKAS APK SUMBER</string>
     <string name="tab_clone_result">HASIL CLONE</string>
+    <string name="msg_reading_apk_file">Membaca dan memvalidasi berkas APK…</string>
+    <string name="err_apk_file_unreadable">Gagal membuka berkas APK yang dipilih. Pastikan berkas masih tersedia lalu coba lagi.</string>
     <string name="label_clone_name">Nama Clone</string>
     <string name="hint_clone_name">Contoh: Dualapps 2</string>
     <string name="default_clone_name_format">%1$s 2</string>

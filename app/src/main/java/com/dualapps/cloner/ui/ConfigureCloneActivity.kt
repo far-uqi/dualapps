@@ -12,6 +12,7 @@ import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import com.dualapps.cloner.R
+import com.dualapps.cloner.data.AndroidApkArchiveInspector
 import com.dualapps.cloner.databinding.ActivityConfigureCloneBinding
 import com.dualapps.cloner.engine.PackageNameValidator
 import com.dualapps.cloner.model.InstalledApp
@@ -29,6 +30,7 @@ class ConfigureCloneActivity : AppCompatActivity() {
     private lateinit var sourceDir: String
     private var sourceSizeBytes: Long = 0L
     private var isSplitApk: Boolean = false
+    private var isFromApkFile: Boolean = false
     private var isCurrentPackageValid: Boolean = false
     private var originalAppIcon: Drawable? = null
     private var customIconFile: File? = null
@@ -51,6 +53,7 @@ class ConfigureCloneActivity : AppCompatActivity() {
         sourceDir = intent.getStringExtra(EXTRA_SOURCE_DIR).orEmpty()
         sourceSizeBytes = intent.getLongExtra(EXTRA_APK_SIZE, 0L)
         isSplitApk = intent.getBooleanExtra(EXTRA_IS_SPLIT, false)
+        isFromApkFile = intent.getBooleanExtra(EXTRA_IS_FROM_APK_FILE, false)
 
         if (sourcePackage.isEmpty() || sourceDir.isEmpty()) {
             finish()
@@ -63,11 +66,18 @@ class ConfigureCloneActivity : AppCompatActivity() {
     private fun setupViews() {
         binding.btnBack.setOnClickListener { finish() }
 
+        binding.tvSourceTab.setText(
+            if (isFromApkFile) R.string.tab_source_apk_file else R.string.tab_source_app
+        )
         binding.tvSourceName.text = sourceName
         binding.tvSourcePackage.text = sourcePackage
         binding.tvSourceSize.text = FormatUtils.formatFileSize(sourceSizeBytes)
 
-        originalAppIcon = runCatching { packageManager.getApplicationIcon(sourcePackage) }.getOrNull()
+        originalAppIcon = if (isFromApkFile) {
+            AndroidApkArchiveInspector.loadArchiveIcon(packageManager, File(sourceDir))
+        } else {
+            runCatching { packageManager.getApplicationIcon(sourcePackage) }.getOrNull()
+        }
         if (originalAppIcon != null) {
             binding.ivSourceIcon.setImageDrawable(originalAppIcon)
             binding.ivCloneIconPreview.setImageDrawable(originalAppIcon)
@@ -195,14 +205,20 @@ class ConfigureCloneActivity : AppCompatActivity() {
         private const val EXTRA_SOURCE_DIR = "extra_source_dir"
         private const val EXTRA_APK_SIZE = "extra_apk_size"
         private const val EXTRA_IS_SPLIT = "extra_is_split"
+        private const val EXTRA_IS_FROM_APK_FILE = "extra_is_from_apk_file"
 
-        fun createIntent(context: Context, app: InstalledApp): Intent {
+        fun createIntent(
+            context: Context,
+            app: InstalledApp,
+            isFromApkFile: Boolean = false
+        ): Intent {
             return Intent(context, ConfigureCloneActivity::class.java).apply {
                 putExtra(EXTRA_PACKAGE_NAME, app.packageName)
                 putExtra(EXTRA_APP_NAME, app.label)
                 putExtra(EXTRA_SOURCE_DIR, app.sourceDir)
                 putExtra(EXTRA_APK_SIZE, app.apkSizeBytes)
                 putExtra(EXTRA_IS_SPLIT, app.isSplitApk)
+                putExtra(EXTRA_IS_FROM_APK_FILE, isFromApkFile)
             }
         }
     }

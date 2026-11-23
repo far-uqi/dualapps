@@ -2,6 +2,7 @@ package com.dualapps.cloner.ui
 
 import android.app.Dialog
 import android.content.Context
+import android.net.Uri
 import android.os.Bundle
 import android.text.Editable
 import android.text.TextWatcher
@@ -9,9 +10,13 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.inputmethod.InputMethodManager
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.dualapps.cloner.R
+import com.dualapps.cloner.data.AndroidApkArchiveInspector
+import com.dualapps.cloner.data.ApkFileSourceValidator
+import com.dualapps.cloner.data.ApkFileValidationResult
 import com.dualapps.cloner.data.InstalledAppsRepository
 import com.dualapps.cloner.databinding.ActivityMainBinding
 import com.dualapps.cloner.databinding.DialogSettingsBinding
@@ -24,6 +29,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class MainActivity : AppCompatActivity() {
 
@@ -33,6 +39,15 @@ class MainActivity : AppCompatActivity() {
 
     private val uiScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var loadJob: Job? = null
+    private var importApkJob: Job? = null
+
+    private val pickApkLauncher = registerForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            handlePickedApkUri(uri)
+        }
+    }
 
     private var allApps: List<InstalledApp> = emptyList()
     private var currentQuery: String = ""
@@ -95,9 +110,50 @@ class MainActivity : AppCompatActivity() {
             binding.etSearch.text?.clear()
         }
 
-        // Tombol + kuning (Bagian 2B): di MVP menampilkan pesan "Segera hadir", jangan dibuat fungsional
+        // Tombol + kuning: pilih file .apk eksternal untuk dikloning (Fase 7)
         binding.btnAddApk.setOnClickListener {
-            Toast.makeText(this, R.string.msg_coming_soon, Toast.LENGTH_SHORT).show()
+            pickApkLauncher.launch(arrayOf("application/vnd.android.package-archive"))
+        }
+    }
+
+    private fun handlePickedApkUri(uri: Uri) {
+        importApkJob?.cancel()
+        Toast.makeText(this, R.string.msg_reading_apk_file, Toast.LENGTH_SHORT).show()
+
+        importApkJob = uiScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                val copiedFile = try {
+                    contentResolver.openInputStream(uri)?.let { stream ->
+                        ApkFileSourceValidator.copyToCache(stream, cacheDir)
+                    }
+                } catch (e: Exception) {
+                    null
+                }
+
+                if (copiedFile == null) {
+                    ApkFileValidationResult.Invalid(getString(R.string.err_apk_file_unreadable))
+                } else {
+                    ApkFileSourceValidator.validate(
+                        apkFile = copiedFile,
+                        inspector = AndroidApkArchiveInspector(packageManager)
+                    )
+                }
+            }
+
+            when (result) {
+                is ApkFileValidationResult.Valid -> {
+                    startActivity(
+                        ConfigureCloneActivity.createIntent(
+                            context = this@MainActivity,
+                            app = result.app,
+                            isFromApkFile = true
+                        )
+                    )
+                }
+                is ApkFileValidationResult.Invalid -> {
+                    Toast.makeText(this@MainActivity, result.message, Toast.LENGTH_LONG).show()
+                }
+            }
         }
     }
 
