@@ -50,6 +50,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private var allApps: List<InstalledApp> = emptyList()
+    private var hasLoadedApps: Boolean = false
     private var currentQuery: String = ""
     private var showSystemApps: Boolean = false
     private var sortOrder: AppSortOrder = AppSortOrder.NAME_ASC
@@ -181,18 +182,23 @@ class MainActivity : AppCompatActivity() {
 
     private fun loadApps() {
         loadJob?.cancel()
+        hasLoadedApps = false
         binding.layoutLoading.visibility = View.VISIBLE
         binding.layoutEmpty.visibility = View.GONE
         binding.rvApps.visibility = View.GONE
 
         loadJob = uiScope.launch {
             allApps = repository.loadInstalledApps()
+            hasLoadedApps = true
             binding.layoutLoading.visibility = View.GONE
             applyFilterAndSort()
         }
     }
 
     private fun applyFilterAndSort() {
+        // Jangan tampilkan state kosong sebelum pemuatan pertama selesai (mis. saat teks pencarian dipulihkan Android)
+        if (!hasLoadedApps) return
+
         val filtered = InstalledAppsRepository.filterAndSort(
             apps = allApps,
             query = currentQuery,

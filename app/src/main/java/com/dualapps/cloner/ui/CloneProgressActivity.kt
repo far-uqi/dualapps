@@ -8,11 +8,14 @@ import android.view.View
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import com.dualapps.cloner.R
+import com.dualapps.cloner.data.ClonedApksRepository
 import com.dualapps.cloner.databinding.ActivityCloneProgressBinding
 import com.dualapps.cloner.databinding.ItemCloneStepBinding
 import com.dualapps.cloner.engine.AndroidArchivePackageReader
 import com.dualapps.cloner.engine.ClonePipeline
+import com.dualapps.cloner.engine.CloneProgressStartResolver
 import com.dualapps.cloner.engine.CloneRequest
+import com.dualapps.cloner.engine.CloneStartAction
 import com.dualapps.cloner.engine.CloneStep
 import com.dualapps.cloner.engine.DeviceKeystoreManager
 import com.dualapps.cloner.model.CloneError
@@ -67,7 +70,24 @@ class CloneProgressActivity : AppCompatActivity() {
         )
 
         setupUi()
-        startCloning()
+
+        val startAction = CloneProgressStartResolver.resolve(
+            clonePackageName = request.clonePackageName,
+            savedRecordJson = savedInstanceState?.getString(STATE_COMPLETED_RECORD_JSON),
+            existingRecords = ClonedApksRepository(filesDir).loadAll(),
+            isExplicitRetry = false
+        )
+        when (startAction) {
+            is CloneStartAction.ShowCompleted -> showRestoredSuccess(startAction.record)
+            CloneStartAction.RunPipeline -> startCloning()
+        }
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        completedRecord?.let { record ->
+            outState.putString(STATE_COMPLETED_RECORD_JSON, record.toJsonString())
+        }
     }
 
     override fun onDestroy() {
@@ -177,6 +197,13 @@ class CloneProgressActivity : AppCompatActivity() {
         }
     }
 
+    private fun showRestoredSuccess(record: ClonedApkRecord) {
+        binding.progressBar.max = CloneStep.entries.size
+        completedStepsCount = CloneStep.entries.size
+        CloneStep.entries.forEach { setStepVisual(it, StepVisual.DONE) }
+        onCloneSuccess(record)
+    }
+
     private fun onCloneSuccess(record: ClonedApkRecord) {
         completedRecord = record
         // Pastikan progress penuh meski langkah APPLY_IDENTITY dilewati saat tidak ada perubahan identitas
@@ -274,6 +301,7 @@ class CloneProgressActivity : AppCompatActivity() {
         private const val EXTRA_CLONE_NAME = "extra_clone_name"
         private const val EXTRA_CLONE_PACKAGE = "extra_clone_package"
         private const val EXTRA_CUSTOM_ICON_PATH = "extra_custom_icon_path"
+        private const val STATE_COMPLETED_RECORD_JSON = "state_completed_record_json"
 
         fun createIntent(
             context: Context,

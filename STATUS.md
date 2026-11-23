@@ -1,27 +1,25 @@
 # STATUS — Dualapps
-Terakhir diperbarui: 2026-11-23 10:12 WIB — Fase 7 selesai
+Terakhir diperbarui: 2026-11-23 10:36 WIB — Fase 8 selesai
 
 ## Ringkasan fase terakhir
-- Fase: 7 — Tombol `+` fungsional sebagai "Clone dari file APK" (`ActivityResultContracts.OpenDocument`, salin ke `cacheDir/picked_apks/`, validasi `PackageManager.getPackageArchiveInfo`, layar Atur Clone dari berkas APK, pipeline clone & Daftar Hasil)
-- Test: 42/42 lulus, 0 gagal, 0 dilewati (perintah: `.\gradlew.bat testDebugUnitTest assembleDebug` dengan `JAVA_HOME=C:\Users\Administrator\.jdks\jdk-17.0.21.1+2`)
+- Fase: 8 — Perbaikan restart `CloneProgressActivity` setelah kembali dari layar Settings "Install unknown apps" (`CloneProgressStartResolver`, `onSaveInstanceState`, cek `ClonedApksRepository`) & tahan state kosong `MainActivity` sebelum pemuatan pertama selesai
+- Test: 46/46 lulus, 0 gagal, 0 dilewati (perintah: `.\gradlew.bat testDebugUnitTest assembleDebug` dengan `JAVA_HOME=C:\Users\Administrator\.jdks\jdk-17.0.21.1+2`)
 - Build: BUILD SUCCESSFUL (`app/build/outputs/apk/debug/app-debug.apk`)
-- Commit: satu commit di branch `adil` — `"feat(phase7): enable clone from external APK file via + button"`
-- Audit mandiri: 0 ketidaksesuaian fungsional; tidak ada izin baru di `AndroidManifest.xml` (SAF `OpenDocument` tidak memerlukan izin storage).
+- Commit: satu commit di branch `adil` — `"fix(phase8): prevent CloneProgressActivity restart after settings return and guard MainActivity initial empty state"`
+- Audit mandiri: 0 ketidaksesuaian fungsional; tidak ada izin baru di `AndroidManifest.xml`.
 
 ## Berkas berubah fase ini
-- app/src/main/java/com/dualapps/cloner/data/ApkFileSourceValidator.kt (baru)
+- app/src/main/java/com/dualapps/cloner/engine/CloneProgressStartResolver.kt (baru)
+- app/src/main/java/com/dualapps/cloner/ui/CloneProgressActivity.kt (diubah)
 - app/src/main/java/com/dualapps/cloner/ui/MainActivity.kt (diubah)
-- app/src/main/java/com/dualapps/cloner/ui/ConfigureCloneActivity.kt (diubah)
-- app/src/main/res/layout/activity_configure_clone.xml (diubah)
-- app/src/main/res/values/strings.xml (diubah)
-- app/src/test/java/com/dualapps/cloner/data/ApkFileSourceValidatorTest.kt (baru)
+- app/src/test/java/com/dualapps/cloner/engine/CloneProgressStartResolverTest.kt (baru)
 - STATUS.md (diubah)
 
 ## Belum selesai / diketahui bermasalah
-- Uji interaksi SAF `OpenDocument` dan pembacaan `PackageManager.getPackageArchiveInfo` nyata pada berkas `.apk` dari penyimpanan HP belum dijalankan langsung di perangkat fisik pasca-Fase 7.
+- Verifikasi perangkat oleh Cak untuk skenario ulang: clone → PASANG → aktifkan izin "Install unknown apps" → back → pastikan `CloneProgressActivity` tetap di state Selesai (tidak mengulang dari 1/7).
 
 ## Langkah berikutnya
-- Pasang `app-debug.apk` terbaru ke HP via `.\gradlew.bat installDebug` dan uji tombol `+` dengan berkas `.apk` dari penyimpanan perangkat.
+- Pasang `app-debug.apk` terbaru ke HP via `.\gradlew.bat installDebug` lalu uji ulang skenario kembali dari layar izin instalasi.
 
 ## Keterbatasan yang berlaku
 - Aplikasi target yang menolak hasil clone (pemeriksaan tanda tangan / Play Integrity / lisensi / DRM) adalah hasil akhir yang sah, bukan bug yang harus dicarikan celahnya.
