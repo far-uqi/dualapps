@@ -1,7 +1,21 @@
 # STATUS — Dualapps
-Terakhir diperbarui: 2026-11-26 12:50 WIB — Fase 12 (Clone dari berkas APKS/XAPK + Perbaikan Progress Pasang) selesai
+Terakhir diperbarui: 2026-11-26 13:40 WIB — Fase 12.1 (Diagnosis Gagal Install Clone Facebook `STATUS_FAILURE_CONFLICT`) selesai
 
 ## Ringkasan fase terakhir
+- Fase: 12.1 — **Diagnosis only** (tanpa ubah kode/test/build) atas kegagalan pasang clone Facebook (`com.facebook.katana` → `com.facebook.katana.clone`, 14 file / 295,2 MB) dengan `STATUS_FAILURE_CONFLICT` di HP RMX1971 (Android 11 / SDK 30).
+- Bukti langsung (`adb pull` 14 APK + `aapt2 dump xmltree` + `dumpsys package` seluruh 7 paket Facebook + eksekusi langsung `AxmlPatcher.patch` & `ArscPatcher.patch` lewat `FbSplitProbe` di scratch):
+  - Seluruh 31 `<provider>` (32 authority) dan 7 `<permission>` hanya berada di `base.apk` (13 split lainnya punya 0 provider & 0 permission) dan **semuanya literal** (0 referensi `@string/...` → H2 gugur untuk Facebook).
+  - Ditemukan **3 tabrakan nyata** yang lolos dari `AxmlPatcher.patch` dan bentrok langsung dengan `com.facebook.katana` (`signatures:[c412e90e]`, dan `com.facebook.orca`):
+    1. `<permission>` `com.facebook.permission.prod.FB_APP_COMMUNICATION` (`prot=signature`) — tidak berawalan `com.facebook.katana.` (H1 terbukti), pemilik di HP: `com.facebook.katana` (`INSTALLED`) & `com.facebook.orca`.
+    2. `<permission>` `com.facebook.receiver.permission.ACCESS` (`prot=signature`) — tidak berawalan `com.facebook.katana.` (H1 terbukti), pemilik di HP: `com.facebook.katana` (`INSTALLED`) & `com.facebook.orca`.
+    3. `<provider>` `androidx.core.content.FileProvider` dengan `android:authorities="com.facebook.katana.quicksilver.fileprovider; com.facebook.katana.apkfileprovider"` — **bug whitespace di `AxmlPatcher.rewriteAuthorities`**: hasil `split(";")` menyisakan spasi awal pada elemen kedua (`" com.facebook.katana.apkfileprovider"`), sehingga `startsWith("com.facebook.katana.")` bernilai `false` dan authority kedua tidak ter-patch (`"com.facebook.katana.clone.quicksilver.fileprovider; com.facebook.katana.apkfileprovider"`), bentrok langsung dengan authority ` com.facebook.katana.apkfileprovider` milik `com.facebook.katana`.
+  - Ukuran/jumlah 14 file (295,2 MB) **bukan** penyebab konflik (`SplitInstallSessionCoordinator` menulis, `fsync`, dan commit 14 file normal hingga mencapai verifikasi `PackageManagerService`).
+  - Dialog `"Can't verify app developer"` adalah gerbang terpisah sebelum instalasi (bila ditekan Close menghasilkan `STATUS_FAILURE_ABORTED`, bukan `STATUS_FAILURE_CONFLICT`); konflik terjadi setelah pengguna memilih `"Install anyway"`.
+- Vonis: **Celah engine yang bisa diperbaiki** di `AxmlPatcher` (trim whitespace pada `rewriteAuthorities` + rename deklarasi `<permission>` non-prefixed beserta referensinya di manifest), dengan catatan bahwa perilaku runtime Facebook pasca-instalasi (pemeriksaan tanda tangan Meta di DEX) tetap di luar cakupan Dualapps.
+- Test & Build: tidak diubah/dijalankan ulang (diagnosis only; terakhir Fase 12 commit `3608561`, **80/80 lulus**, `app-debug.apk` `10.193.252` byte).
+- Commit: satu commit di branch `adil` — `"docs(phase12.1): record Facebook STATUS_FAILURE_CONFLICT diagnosis in STATUS.md"`
+
+## Ringkasan Fase 12 (sebelumnya)
 - Fase: 12 — Clone dari berkas `.apks` / `.xapk` (via tombol `+` / `pickApkLauncher` dengan MIME `*/*`, ekstraksi & validasi `ApkBundleExtractor` ke `cacheDir/picked_apks/bundle_<uuid>/`, penolakan `.obb` via `BUNDLE_HAS_OBB`, identifikasi base vs split lewat AXML tanpa parsing `toc.pb` dan tanpa `PackageManager.getPackageArchiveInfo` pada split, pemakaian ulang `ClonePipeline` & `SplitApkInstaller` Fase 10, label asal `"BERKAS APKS SUMBER"` / `"BERKAS XAPK SUMBER"` + `"HASIL CLONE • dari berkas APKS/XAPK"`), perbaikan indikator progres pemasangan non-blocking (`InstallProgressTracker` berbasis `StateFlow` pada `ResultsActivity` & `CloneProgressActivity` untuk Split APK maupun APK tunggal), 5 `CloneError` baru (total 24), dan 13 unit test baru.
 - Test: **80/80 lulus** (67 test sebelumnya + 13 test baru Fase 12), 0 gagal, 0 dilewati (perintah: `.\gradlew.bat testDebugUnitTest assembleDebug` dengan `JAVA_HOME=C:\Users\Administrator\.jdks\jdk-17.0.21.1+2`)
 - Build debug: **BUILD SUCCESSFUL** — `app/build/outputs/apk/debug/app-debug.apk` (`10.193.252` byte / ~9,72 MB, `EXIT_CODE=0`, durasi total `26.94s`)
