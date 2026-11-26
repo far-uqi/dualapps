@@ -12,6 +12,7 @@ import com.dualapps.cloner.data.ClonedApksRepository
 import com.dualapps.cloner.databinding.ActivityCloneProgressBinding
 import com.dualapps.cloner.databinding.ItemCloneStepBinding
 import com.dualapps.cloner.engine.AndroidArchivePackageReader
+import com.dualapps.cloner.engine.AndroidContentProviderResolver
 import com.dualapps.cloner.engine.ClonePipeline
 import com.dualapps.cloner.engine.CloneProgressStartResolver
 import com.dualapps.cloner.engine.CloneRequest
@@ -211,7 +212,8 @@ class CloneProgressActivity : AppCompatActivity() {
             filesDir = filesDir,
             keystoreManager = DeviceKeystoreManager(filesDir),
             archivePackageReader = AndroidArchivePackageReader(packageManager),
-            isPackageInstalled = ::isPackageInstalledOnDevice
+            isPackageInstalled = ::isPackageInstalledOnDevice,
+            contentProviderResolver = AndroidContentProviderResolver(packageManager)
         )
 
         cloneJob = uiScope.launch {

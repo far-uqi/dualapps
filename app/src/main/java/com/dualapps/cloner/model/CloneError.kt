@@ -71,6 +71,9 @@ enum class CloneError(val userMessage: String) {
     BUNDLE_HAS_OBB(
         "Bundle ini berisi file OBB yang belum didukung — clone dibatalkan."
     ),
+    INCOMPATIBLE_APP(
+        "Aplikasi ini tidak bisa di-clone karena memanggil provider ber-permission signature secara langsung. Clone akan tertutup sendiri saat dibuka."
+    ),
     CANCELLED(
         "Proses clone dibatalkan oleh pengguna."
     ),

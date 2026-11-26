@@ -79,7 +79,7 @@ class AppFilterAndFormatTest {
 
     @Test
     fun allCloneErrorsHaveNonBlankIndonesianMessages() {
-        assertEquals(24, CloneError.entries.size)
+        assertEquals(25, CloneError.entries.size)
         CloneError.entries.forEach { error ->
             assertTrue("Message kosong untuk $error", error.userMessage.isNotBlank())
         }

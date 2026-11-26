@@ -78,7 +78,8 @@ class ClonePipeline(
     private val filesDir: File,
     private val keystoreManager: DeviceKeystoreManager,
     private val archivePackageReader: ArchivePackageReader,
-    private val isPackageInstalled: (String) -> Boolean
+    private val isPackageInstalled: (String) -> Boolean,
+    private val contentProviderResolver: ContentProviderResolver = ContentProviderResolver { null }
 ) {
     suspend fun execute(
         request: CloneRequest,
@@ -168,6 +169,23 @@ class ClonePipeline(
                     File(split.path).copyTo(dest, overwrite = true)
                     copiedSplits.add(safeName to dest)
                 }
+            }
+
+            // Pemeriksaan kompatibilitas pra-clone (Fase 13): deteksi fail-fast sebelum patching AXML
+            checkCancelled()
+            val copiedApksForCheck = buildList {
+                add(copiedBase)
+                copiedSplits.forEach { add(it.second) }
+            }
+            val compatibilityReport = CloneCompatibilityChecker.checkApkFiles(
+                apkFiles = copiedApksForCheck,
+                contentProviderResolver = contentProviderResolver
+            )
+            if (!compatibilityReport.isCompatible) {
+                throw CloneException(
+                    CloneError.INCOMPATIBLE_APP,
+                    compatibilityReport.formatUserMessage()
+                )
             }
             onStepDone(activeStep)
 

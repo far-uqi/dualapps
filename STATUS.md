@@ -1,7 +1,17 @@
 # STATUS — Dualapps
-Terakhir diperbarui: 2026-11-26 14:36 WIB — Fase 12.3 (Diagnosis Crash Clone Facebook Saat Login) selesai
+Terakhir diperbarui: 2026-11-26 15:00 WIB — Fase 13 (Pemeriksaan Kompatibilitas Pra-Clone: Peringatan + Gagalkan Clone) selesai
 
 ## Ringkasan fase terakhir
+- Fase: 13 — Pemeriksaan kompatibilitas pra-clone fail-fast (read-only DEX, tanpa modifikasi bytecode):
+  - `DexStringReader.kt` (baru): parser read-only tabel `string_ids` DEX (versi `035`–`041`, mendukung fast-path prefix `content://` untuk hemat memori pada APK besar, fail-open pada DEX rusak/magic tak dikenal).
+  - `CloneCompatibilityChecker.kt` (baru): mengekstrak semua URI `content://` hardcode dari `classes*.dex` seluruh APK sumber (base + split) dan memeriksa terhadap Aturan A (provider di manifest target dengan permission `protectionLevel` `signature` / `signatureOrSystem`) dan Aturan B (provider lintas-aplikasi terpasang via abstraksi `ContentProviderResolver` / `AndroidContentProviderResolver`).
+  - `CloneError.INCOMPATIBLE_APP` (baru, total 25 enum): dilempar dari `ClonePipeline` pada Langkah 1 (`VALIDATE_SOURCE`) sebelum patching AXML dimulai, menampilkan authority + permission + akibat langsung di kartu error layar proses tanpa menghasilkan APK clone.
+- Test: **95/95 lulus** (86 test sebelumnya + 9 test baru Fase 13: 2 di `DexStringReaderTest`, 5 di `CloneCompatibilityCheckerTest`, 2 di `ClonePipelineTest`), 0 gagal, 0 dilewati (perintah: `.\gradlew.bat testDebugUnitTest assembleDebug` dengan `JAVA_HOME=C:\Users\Administrator\.jdks\jdk-17.0.21.1+2`)
+- Build debug: **BUILD SUCCESSFUL** — `app/build/outputs/apk/debug/app-debug.apk` (`10.300.802` byte / ~9,82 MB, `EXIT_CODE=0`, durasi total `71.67s`)
+- Commit: satu commit di branch `adil` — `"feat(phase13): pre-clone compatibility check warns and aborts incompatible apps"`
+- Audit mandiri Fase 13: 0 ketidaksesuaian pada kode/test/build; berkas terlarang (`AxmlPatcher`, `ArscPatcher`, `AlignedZipWriter`, `ApkRebuilder`, `CloneIdentityPatcher`, `ApkSigningEngine`, `CloneUpdateChecker`, mode `isUpdate`, `AndroidManifest.xml`, `build.gradle.kts`) tidak disentuh; uji perangkat pada HP RMX1971 (tolak Facebook + regresi Muse & ChatGPT split) menunggu eksekusi Cak.
+
+## Ringkasan Fase 12.3 (Diagnosis)
 - Fase: 12.3 — **Diagnosis only** (tanpa ubah kode/test/build/DEX) atas crash (force close) clone Facebook (`com.facebook.katana.clone`) saat layar login di HP RMX1971 (Android 11 / SDK 30).
 - Bukti langsung (`adb logcat -v threadtime` pada buffer sebelumnya [8 kejadian identik 14:16–14:20 WIB] + uji kontrol diam 15 detik tanpa sentuhan layar `fb_login_crash.log` + `dexdump -d` pada `classes5.dex` & scan 31 file DEX `base.apk`):
   - **Exception verbatim:** `FATAL EXCEPTION: BgHandler` (`Process: com.facebook.katana.clone`, `PID: 23917`, `uid=10654`): `java.lang.SecurityException: Permission Denial: opening provider com.facebook.messaging.push.dedup.provider.ClientMessagePushDedupInfoProvider from ProcessRecord{a3c638a 23917:com.facebook.katana.clone/u0a654} (pid=23917, uid=10654) requires com.facebook.permission.prod.FB_APP_COMMUNICATION or com.facebook.permission.prod.FB_APP_COMMUNICATION` pada `ContentResolver.delete` → `X.0A9Z.run(:50)`.
