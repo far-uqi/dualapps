@@ -2,23 +2,26 @@
 
 > **English:** Dualapps is a personal Android app cloner. Pick an installed app and create a second copy with a new package name, so two accounts can run side by side. Everything runs on your device — no account, no cloud, no ads.
 
-[⬇️ Unduh APK terbaru (v1.0)](https://github.com/far-uqi/dualapps/releases/latest/download/dualapps-v1.0.apk)
+[⬇️ Unduh APK terbaru (v2.0)](https://github.com/far-uqi/dualapps/releases/latest/download/dualapps-v2.0.apk)
 
 Dualapps adalah aplikasi Android untuk meng-clone aplikasi yang sudah terpasang di HP kamu menjadi salinan kedua dengan nama paket baru (`.clone`, `.clone2`, ...), supaya dua akun bisa jalan berdampingan. Dibuat untuk pemakaian pribadi, tanpa iklan, tanpa akun, tanpa cloud — semua proses berjalan di perangkatmu sendiri.
 
-## ✨ Fitur (v1.0)
+## ✨ Fitur (v2.0)
 
 - **Tanpa iklan** — tidak ada iklan, tidak ada akun, tidak ada pelacakan. Semua proses berjalan di perangkatmu.
 - **Clone aplikasi terpasang** — pilih aplikasi dari daftar, atur nama clone dan nama paket otomatis (`.clone`, `.clone2`, ...), lalu clone dengan progress 7 langkah yang bisa dibatalkan.
+- **Clone Split APK** — aplikasi yang terpasang sebagai beberapa berkas APK kini bisa di-clone (base + split dipasang dalam satu sesi).
+- **Perbarui clone** — bila aplikasi sumber diperbarui, clone bisa diperbarui ke versi yang sama tanpa hapus data (badge "Pembaruan tersedia" + tombol PERBARUI di layar Hasil).
 - **Nama & ikon custom** — ganti nama launcher dan pilih gambar dari galeri sebagai ikon clone.
-- **Clone dari berkas APK** — tombol `+` untuk memilih berkas `.apk` dari penyimpanan dan meng-clone-nya.
+- **Clone dari berkas APK / APKS / XAPK** — tombol `+` untuk memilih berkas `.apk`, `.apks`, atau `.xapk` dari penyimpanan dan meng-clone-nya.
+- **Indikator progres pemasangan** — status "Memasang…" tampil selama instalasi berjalan, sampai selesai atau gagal.
 - **Daftar hasil** — semua hasil clone tercatat dengan tombol Pasang, Bagikan, dan Hapus.
 - **Panduan Play Protect** — petunjuk di layar Hasil untuk memasang clone yang ditandai Play Protect.
 - **Pencarian & filter** — cari aplikasi berdasarkan nama/paket, tampilkan/sembunyikan aplikasi sistem.
 
 ## ⬇️ Unduh & Pasang
 
-1. Unduh APK terbaru dari halaman [Releases](https://github.com/far-uqi/dualapps/releases/latest) — berkas `dualapps-v1.0.apk`.
+1. Unduh APK terbaru dari halaman [Releases](https://github.com/far-uqi/dualapps/releases/latest) — berkas `dualapps-v2.0.apk`.
 2. Buka berkasnya di HP. Jika diminta, izinkan **"Install unknown apps"** untuk sumber ini (browser/file manager yang kamu pakai).
 3. Jika Play Protect menampilkan peringatan, ketuk **"Detail selengkapnya" → "Tetap pasang"**.
 4. Buka Dualapps dari launcher.
@@ -36,7 +39,7 @@ Catatan: clone ditandatangani ulang dengan keystore unik yang dibuat di perangka
 
 ## ⚠️ Keterbatasan
 
-- **Split APK belum didukung** (aplikasi yang terpasang sebagai beberapa berkas APK). Aplikasi seperti itu ditandai "Split — belum didukung". Dukungan split APK direncanakan untuk v2.0.
+- **Split APK didukung** — aplikasi yang terpasang sebagai beberapa berkas APK kini bisa di-clone. Berkas bundle yang berisi file OBB belum didukung.
 - **Kode DEX tidak disentuh** — hanya manifest, resources, dan tanda tangan yang diubah.
 - Aplikasi yang memeriksa tanda tangan, Play Integrity, lisensi, atau DRM **dapat menolak hasil clone**. Itu hasil akhir yang sah, bukan bug.
 - Tidak ada dukungan khusus untuk aplikasi bank/pembayaran.
@@ -79,5 +82,5 @@ Dualapps adalah proyek pribadi dan tidak berafiliasi dengan Google atau develope
 
 ## 🗺️ Rencana
 
-- **v1.0** (saat ini): clone APK tunggal + nama & ikon custom + clone dari berkas APK.
-- **v2.0** (rencana): dukungan split APK.
+- **v1.0**: clone APK tunggal + nama & ikon custom + clone dari berkas APK.
+- **v2.0** (saat ini): dukungan split APK + perbarui clone + clone dari berkas APKS/XAPK + indikator progres pemasangan.
