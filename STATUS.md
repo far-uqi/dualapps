@@ -1,7 +1,18 @@
 # STATUS — Dualapps
-Terakhir diperbarui: 2026-11-26 15:00 WIB — Fase 13 (Pemeriksaan Kompatibilitas Pra-Clone: Peringatan + Gagalkan Clone) selesai
+Terakhir diperbarui: 2026-11-26 15:40 WIB — Fase 13.1 (Diagnosis False Positive Checker pada Clone Muse) selesai
 
 ## Ringkasan fase terakhir
+- Fase: 13.1 — **Diagnosis only** (tanpa ubah kode/test/build/DEX) atas false positive `CloneCompatibilityChecker` (Fase 13) pada Muse (`com.facebook.aura`, `versionName=17.1.0.28.160`, `versionCode=1062201892`, 2 file: `base.apk` 62,4 MB + `split_browser_engine.apk` 7,4 MB).
+- Bukti langsung (`adb pull` 2 APK Muse + scan 7 DEX `base.apk` + `dexdump -d classes5.dex` + `aapt2 dump xmltree` manifest `katana`):
+  - Seluruh 50 URI `content://` (45 URI keluarga Meta AccessLibrary, termasuk `content://com.facebook.katana.provider.UserValuesProvider/user_values`) hanya berada di `base.apk -> classes5.dex` (0 di 6 DEX lainnya dan 0 DEX di `split_browser_engine.apk`).
+  - Dari seluruh URI tersebut, hanya `com.facebook.katana.provider.UserValuesProvider` yang memiliki atribut manifest `android:permission="com.facebook.katana.provider.ACCESS"` (`protectionLevel=signature`) di `com.facebook.katana` (provider lain seperti `FirstPartyUserValuesProvider` dan `UsdidValuesProvider` tidak memiliki atribut `android:permission` di manifest).
+  - **H1 TERBUKTI 100% (`try/catch` eksplisit di 3 lapis):** URI `content://com.facebook.katana.provider.UserValuesProvider/user_values` disimpan dalam registri statis Meta AccessLibrary (`LX/EhU;.A0F` → `LX/EhU;.A00..A03`), lalu dipakai oleh `MAHatchNativeAuthAppStartLogger.fetchWaEligibilityFlags` (startup) dan `X.EhL.A07` lewat `X.EhL.A00` (acquire `ContentProviderClient`) & `X.EhN.A00` (`ContentProviderClient.query`). Ketiganya membungkus pemanggilan provider dalam `try/catch` yang menangkap `Ljava/lang/SecurityException;`, `Landroid/os/RemoteException;`, `Ljava/lang/Exception;`, dan `<any>`.
+  - Bahkan Muse ASLI (`com.facebook.aura`, sertifikat `7021f46`) memiliki sertifikat berbeda dari Facebook (`com.facebook.katana`, sertifikat `c412e90e`), sehingga Muse asli pun sudah bergantung pada `catch (SecurityException)` tersebut dan tidak pernah crash.
+- Vonis: **H1 terbukti (false positive dari Aturan B lintas-aplikasi)** — karena URI disimpan di registri statis (`LX/EhU;`) terpisah dari pemanggil `ContentProviderClient` (`X.EhL.A00`/`X.EhN.A00`), deteksi `try/catch` intra-metode saja tidak cukup. Rekomendasi perbaikan untuk Fase 13.2: **(b) bedakan Aturan A (provider signature milik target sendiri, risiko crash tinggi seperti Facebook) vs Aturan B (provider lintas-aplikasi seperti Muse/gservices yang umumnya dibungkus `try/catch`) + sediakan tombol override `"Tetap clone (risiko crash)"`** pada dialog/layar peringatan agar pengguna bisa melanjutkan sendiri.
+- Test & Build: tidak diubah/dijalankan ulang (diagnosis only; terakhir Fase 13 commit `efe860f`, **95/95 lulus**, `app-debug.apk` `10.300.802` byte).
+- Commit: satu commit di branch `adil` — `"docs(phase13.1): record Muse false-positive diagnosis in STATUS.md"`
+
+## Ringkasan Fase 13 (sebelumnya)
 - Fase: 13 — Pemeriksaan kompatibilitas pra-clone fail-fast (read-only DEX, tanpa modifikasi bytecode):
   - `DexStringReader.kt` (baru): parser read-only tabel `string_ids` DEX (versi `035`–`041`, mendukung fast-path prefix `content://` untuk hemat memori pada APK besar, fail-open pada DEX rusak/magic tak dikenal).
   - `CloneCompatibilityChecker.kt` (baru): mengekstrak semua URI `content://` hardcode dari `classes*.dex` seluruh APK sumber (base + split) dan memeriksa terhadap Aturan A (provider di manifest target dengan permission `protectionLevel` `signature` / `signatureOrSystem`) dan Aturan B (provider lintas-aplikasi terpasang via abstraksi `ContentProviderResolver` / `AndroidContentProviderResolver`).
