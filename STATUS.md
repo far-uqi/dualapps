@@ -1,7 +1,17 @@
 # STATUS — Dualapps
-Terakhir diperbarui: 2026-11-26 15:40 WIB — Fase 13.1 (Diagnosis False Positive Checker pada Clone Muse) selesai
+Terakhir diperbarui: 2026-11-26 15:53 WIB — Fase 13.2 (Pemisahan Aturan A vs Aturan B + Tombol Override) selesai
 
 ## Ringkasan fase terakhir
+- Fase: 13.2 — Perbaikan false positive `CloneCompatibilityChecker` hasil diagnosis Fase 13.1:
+  - Pemisahan keparahan di `CloneCompatibilityChecker.kt`: `CompatibilityRule.A` (`BLOCKING`, provider signature milik target sendiri) menggagalkan clone dengan `CloneError.INCOMPATIBLE_APP`; `CompatibilityRule.B` (`WARNING`, provider signature lintas-aplikasi seperti Muse → `katana.UserValuesProvider`) memperingatkan lewat kartu kuning `cardWarning` (`PERINGATAN KOMPATIBILITAS`) dan membiarkan clone lanjut normal; bila A+B muncul bersamaan, `BLOCKING` (A) menang.
+  - Persistensi catatan di `ClonedApkRecord.compatibilityWarning` (JSON backward-compatible) dan ditampilkan di layar Hasil (`item_cloned_apk.xml` / `ClonedApksAdapter.kt`).
+  - Tombol override satu kali **"Tetap clone (risiko crash)"** pada kartu error `INCOMPATIBLE_APP` di `CloneProgressActivity.kt`, mengalirkan `skipCompatibilityCheck = true` lewat `CloneProgressStartResolver` → `ClonePipeline` tanpa pengaturan permanen, dan mencatat override di `compatibilityWarning`.
+- Test: **102/102 lulus** (95 test sebelumnya + 7 test baru Fase 13.2: 5 di `CloneCompatibilityCheckerTest`, 2 di `ClonePipelineTest`), 0 gagal, 0 dilewati (perintah: `.\gradlew.bat testDebugUnitTest assembleDebug` dengan `JAVA_HOME=C:\Users\Administrator\.jdks\jdk-17.0.21.1+2`)
+- Build debug: **BUILD SUCCESSFUL** — `app/build/outputs/apk/debug/app-debug.apk` (`10.198.556` byte / ~9,73 MB, `EXIT_CODE=0`, durasi total `89.85s`)
+- Commit: satu commit di branch `adil` — `"fix(phase13.2): separate Rule A block from Rule B warning and add override"`
+- Audit mandiri Fase 13.2: 0 ketidaksesuaian pada kode/test/build; berkas terlarang (`DexStringReader`, `AxmlPatcher`, `ArscPatcher`, `AlignedZipWriter`, `ApkRebuilder`, `CloneIdentityPatcher`, `ApkSigningEngine`, `CloneUpdateChecker`, mode `isUpdate`, `AndroidManifest.xml`, `build.gradle.kts`) tidak disentuh; uji perangkat pada HP RMX1971 (Facebook blokir + override, Muse 7/7 dengan kartu peringatan Aturan B, regresi ChatGPT split) menunggu eksekusi Cak.
+
+## Ringkasan Fase 13.1 (Diagnosis)
 - Fase: 13.1 — **Diagnosis only** (tanpa ubah kode/test/build/DEX) atas false positive `CloneCompatibilityChecker` (Fase 13) pada Muse (`com.facebook.aura`, `versionName=17.1.0.28.160`, `versionCode=1062201892`, 2 file: `base.apk` 62,4 MB + `split_browser_engine.apk` 7,4 MB).
 - Bukti langsung (`adb pull` 2 APK Muse + scan 7 DEX `base.apk` + `dexdump -d classes5.dex` + `aapt2 dump xmltree` manifest `katana`):
   - Seluruh 50 URI `content://` (45 URI keluarga Meta AccessLibrary, termasuk `content://com.facebook.katana.provider.UserValuesProvider/user_values`) hanya berada di `base.apk -> classes5.dex` (0 di 6 DEX lainnya dan 0 DEX di `split_browser_engine.apk`).

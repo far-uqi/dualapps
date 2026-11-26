@@ -71,26 +71,68 @@ class AndroidContentProviderResolver(
     }
 }
 
+enum class CompatibilityRule {
+    A,
+    B
+}
+
+enum class CompatibilitySeverity {
+    BLOCKING,
+    WARNING
+}
+
 data class CompatibilityIssue(
     val authority: String,
     val permission: String,
-    val reason: String
+    val reason: String,
+    val rule: CompatibilityRule = CompatibilityRule.A,
+    val severity: CompatibilitySeverity = CompatibilitySeverity.BLOCKING,
+    val ownerPackageName: String? = null
 )
 
 data class CompatibilityReport(
     val issues: List<CompatibilityIssue>
 ) {
+    val blockingIssues: List<CompatibilityIssue>
+        get() = issues.filter { it.severity == CompatibilitySeverity.BLOCKING }
+
+    val warnings: List<CompatibilityIssue>
+        get() = issues.filter { it.severity == CompatibilitySeverity.WARNING }
+
+    val hasBlockingIssues: Boolean get() = blockingIssues.isNotEmpty()
+    val hasWarnings: Boolean get() = warnings.isNotEmpty()
     val isCompatible: Boolean get() = issues.isEmpty()
 
     fun formatUserMessage(): String {
-        if (issues.isEmpty()) return ""
-        val first = issues.first()
-        if (issues.size == 1) {
-            return "Aplikasi ini tidak bisa di-clone. Alasan: ${first.reason} Clone akan tertutup sendiri saat dibuka."
+        val primary = blockingIssues.ifEmpty { issues }
+        if (primary.isEmpty()) return ""
+        val baseMsg = if (primary.size == 1) {
+            "Aplikasi ini tidak bisa di-clone. Alasan: ${primary.first().reason} Clone akan tertutup sendiri saat dibuka."
+        } else {
+            val details = primary.take(3).joinToString("; ") { "${it.authority} (${it.permission})" }
+            val extra = if (primary.size > 3) " dan ${primary.size - 3} lainnya" else ""
+            "Aplikasi ini tidak bisa di-clone. Alasan: aplikasinya memanggil provider ber-permission signature secara langsung ($details$extra). Clone akan tertutup sendiri saat dibuka."
         }
-        val details = issues.take(3).joinToString("; ") { "${it.authority} (${it.permission})" }
-        val extra = if (issues.size > 3) " dan ${issues.size - 3} lainnya" else ""
-        return "Aplikasi ini tidak bisa di-clone. Alasan: aplikasinya memanggil provider ber-permission signature secara langsung ($details$extra). Clone akan tertutup sendiri saat dibuka."
+        val extraWarnings = if (blockingIssues.isNotEmpty() && warnings.isNotEmpty()) {
+            val wSummary = warnings.take(2).joinToString("; ") { "${it.authority} (${it.permission})" }
+            "\nCatatan lintas-aplikasi: $wSummary."
+        } else {
+            ""
+        }
+        return baseMsg + extraWarnings
+    }
+
+    fun formatWarningMessage(): String {
+        val list = warnings
+        if (list.isEmpty()) return ""
+        if (list.size == 1) {
+            val w = list.first()
+            val ownerSuffix = w.ownerPackageName?.takeIf { it.isNotBlank() }?.let { " milik $it" }.orEmpty()
+            return "Peringatan: aplikasi ini memanggil provider ${w.authority}$ownerSuffix yang dikunci permission signature ${w.permission}. Biasanya ditangani aplikasi dengan aman, tetapi ada risiko clone tertutup saat fitur itu dipakai."
+        }
+        val details = list.take(3).joinToString("; ") { "${it.authority} (${it.permission})" }
+        val extra = if (list.size > 3) " dan ${list.size - 3} lainnya" else ""
+        return "Peringatan: aplikasi ini memanggil provider lintas-aplikasi ber-permission signature ($details$extra). Biasanya ditangani aplikasi dengan aman, tetapi ada risiko clone tertutup saat fitur itu dipakai."
     }
 }
 
@@ -224,14 +266,16 @@ object CloneCompatibilityChecker {
                                 CompatibilityIssue(
                                     authority = authority,
                                     permission = permName,
-                                    reason = "aplikasinya memanggil provider $authority yang dikunci permission signature $permName."
+                                    reason = "aplikasinya memanggil provider $authority yang dikunci permission signature $permName.",
+                                    rule = CompatibilityRule.A,
+                                    severity = CompatibilitySeverity.BLOCKING
                                 )
                             )
                         }
                     }
                 }
             } else {
-                // Aturan B: provider milik aplikasi lain yang terpasang (lintas-aplikasi)
+                // Aturan B: provider milik aplikasi lain yang terpasang (lintas-aplikasi) -> WARNING
                 val resolved = runCatching { contentProviderResolver.resolve(authority) }.getOrNull()
                 if (resolved != null &&
                     resolved.isSignatureProtected &&
@@ -248,7 +292,10 @@ object CloneCompatibilityChecker {
                             CompatibilityIssue(
                                 authority = authority,
                                 permission = permName,
-                                reason = "aplikasinya memanggil provider $authority$ownerSuffix yang dikunci permission signature $permName."
+                                reason = "aplikasinya memanggil provider $authority$ownerSuffix yang dikunci permission signature $permName.",
+                                rule = CompatibilityRule.B,
+                                severity = CompatibilitySeverity.WARNING,
+                                ownerPackageName = resolved.ownerPackageName
                             )
                         )
                     }

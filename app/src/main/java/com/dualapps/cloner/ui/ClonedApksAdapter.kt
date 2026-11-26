@@ -74,6 +74,13 @@ class ClonedApksAdapter(
             }
             binding.tvCreatedAt.text = FormatUtils.formatTimestamp(record.createdAtMillis)
 
+            if (!record.compatibilityWarning.isNullOrBlank()) {
+                binding.tvCompatibilityWarning.visibility = View.VISIBLE
+                binding.tvCompatibilityWarning.text = record.compatibilityWarning
+            } else {
+                binding.tvCompatibilityWarning.visibility = View.GONE
+            }
+
             when (val status = item.updateStatus) {
                 is CloneUpdateStatus.UpdateAvailable -> {
                     binding.tvUpdateBadge.visibility = View.VISIBLE

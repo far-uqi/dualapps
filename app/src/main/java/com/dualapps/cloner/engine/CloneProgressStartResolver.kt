@@ -21,9 +21,10 @@ object CloneProgressStartResolver {
         savedRecordJson: String?,
         existingRecords: List<ClonedApkRecord>,
         isExplicitRetry: Boolean = false,
-        isUpdateRun: Boolean = false
+        isUpdateRun: Boolean = false,
+        skipCompatibilityCheck: Boolean = false
     ): CloneStartAction {
-        if (isExplicitRetry) {
+        if (isExplicitRetry || skipCompatibilityCheck) {
             return CloneStartAction.RunPipeline
         }
 

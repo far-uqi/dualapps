@@ -128,7 +128,10 @@ class CloneProgressActivity : AppCompatActivity() {
             cloneJob?.cancel()
         }
         binding.btnRetry.setOnClickListener {
-            startCloning()
+            startCloning(skipCompatibilityCheck = false)
+        }
+        binding.btnOverrideClone.setOnClickListener {
+            startCloning(skipCompatibilityCheck = true)
         }
         binding.btnInstall.setOnClickListener {
             val record = completedRecord ?: return@setOnClickListener
@@ -195,16 +198,27 @@ class CloneProgressActivity : AppCompatActivity() {
         binding.progressBar.progress = 0
         binding.tvProgressCount.text = getString(R.string.progress_count_format, 0, CloneStep.entries.size)
         binding.tvFileProgress.visibility = View.GONE
+        binding.cardWarning.visibility = View.GONE
         binding.cardError.visibility = View.GONE
         binding.cardSuccessFolder.visibility = View.GONE
         binding.btnInstall.visibility = View.GONE
         binding.btnRetry.visibility = View.GONE
+        binding.btnOverrideClone.visibility = View.GONE
         binding.btnCancel.visibility = View.VISIBLE
         CloneStep.entries.forEach { setStepVisual(it, StepVisual.PENDING) }
     }
 
-    private fun startCloning() {
+    private fun startCloning(skipCompatibilityCheck: Boolean = false) {
         cloneJob?.cancel()
+        val action = CloneProgressStartResolver.resolve(
+            clonePackageName = request.clonePackageName,
+            savedRecordJson = null,
+            existingRecords = emptyList(),
+            isExplicitRetry = true,
+            isUpdateRun = request.isUpdate,
+            skipCompatibilityCheck = skipCompatibilityCheck
+        )
+        if (action !is CloneStartAction.RunPipeline) return
         resetUiForRun()
 
         val pipeline = ClonePipeline(
@@ -218,13 +232,14 @@ class CloneProgressActivity : AppCompatActivity() {
 
         cloneJob = uiScope.launch {
             try {
+                val baseReq = request.copy(skipCompatibilityCheck = skipCompatibilityCheck)
                 val effectiveRequest = if (!customIconPath.isNullOrBlank()) {
                     val densityPngs = withContext(Dispatchers.IO) {
                         IconProcessor.generateDensityPngsFromFile(File(customIconPath!!))
                     }
-                    request.copy(customIconPngs = densityPngs)
+                    baseReq.copy(customIconPngs = densityPngs)
                 } else {
-                    request
+                    baseReq
                 }
                 val record = pipeline.execute(
                     request = effectiveRequest,
@@ -258,6 +273,12 @@ class CloneProgressActivity : AppCompatActivity() {
                                 )
                             }
                         }
+                    },
+                    onCompatibilityWarning = { warningText ->
+                        runOnUiThread {
+                            binding.cardWarning.visibility = View.VISIBLE
+                            binding.tvWarningMessage.text = warningText
+                        }
                     }
                 )
                 onCloneSuccess(record)
@@ -288,7 +309,13 @@ class CloneProgressActivity : AppCompatActivity() {
         binding.tvHeadline.setText(R.string.headline_results)
         binding.btnCancel.visibility = View.GONE
         binding.btnRetry.visibility = View.GONE
+        binding.btnOverrideClone.visibility = View.GONE
         binding.cardError.visibility = View.GONE
+
+        if (!record.compatibilityWarning.isNullOrBlank()) {
+            binding.cardWarning.visibility = View.VISIBLE
+            binding.tvWarningMessage.text = record.compatibilityWarning
+        }
 
         binding.cardSuccessFolder.visibility = View.VISIBLE
         binding.tvSuccessName.text = record.cloneName
@@ -324,6 +351,8 @@ class CloneProgressActivity : AppCompatActivity() {
         }
         binding.tvErrorMessage.text = message
         binding.btnRetry.visibility = View.VISIBLE
+        binding.btnOverrideClone.visibility =
+            if (error == CloneError.INCOMPATIBLE_APP) View.VISIBLE else View.GONE
     }
 
     private enum class StepVisual { PENDING, RUNNING, DONE, FAILED }

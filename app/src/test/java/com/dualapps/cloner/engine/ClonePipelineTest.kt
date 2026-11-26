@@ -311,4 +311,141 @@ class ClonePipelineTest {
         assertEquals(newPkg, record.clonePackageName)
         assertTrue(record.apkFile.exists())
     }
+
+    @Test
+    fun completesWithRecordedWarningWhenApkOnlyTriggersRuleB() = runBlocking {
+        val cacheDir = tempFolder.newFolder("cacheRuleB")
+        val filesDir = tempFolder.newFolder("filesRuleB")
+        val sourceApk = tempFolder.newFile("source-muse-ruleb.apk")
+        val oldPkg = "com.example.aura"
+        val newPkg = "com.example.aura.clone"
+        val museDex = DexStringReaderTest.buildSyntheticDex(
+            listOf("content://com.facebook.katana.provider.UserValuesProvider/user_values")
+        )
+        BinaryFixtureBuilder.buildFixtureApk(sourceApk, oldPkg, dexPayload = museDex)
+
+        val resolver = ContentProviderResolver { auth ->
+            if (auth == "com.facebook.katana.provider.UserValuesProvider") {
+                ResolvedProviderInfo(
+                    authority = auth,
+                    isSignatureProtected = true,
+                    signaturePermissionName = "com.facebook.katana.provider.ACCESS",
+                    ownerPackageName = "com.facebook.katana"
+                )
+            } else null
+        }
+
+        val receivedWarnings = mutableListOf<String>()
+        val pipeline = ClonePipeline(
+            cacheDir = cacheDir,
+            filesDir = filesDir,
+            keystoreManager = DeviceKeystoreManager(filesDir),
+            archivePackageReader = { apkFile ->
+                java.util.zip.ZipFile(apkFile).use { zip ->
+                    val mf = zip.getInputStream(zip.getEntry("AndroidManifest.xml")).readBytes()
+                    AxmlPatcher.readPackageName(mf)
+                }
+            },
+            isPackageInstalled = { false },
+            contentProviderResolver = resolver
+        )
+
+        val record = pipeline.execute(
+            request = CloneRequest(
+                sourceApkPath = sourceApk.absolutePath,
+                isSplitApk = false,
+                originalAppName = "Dualapps",
+                originalPackageName = oldPkg,
+                cloneName = "Muse 2",
+                clonePackageName = newPkg
+            ),
+            onCompatibilityWarning = { receivedWarnings.add(it) }
+        )
+
+        assertEquals(newPkg, record.clonePackageName)
+        assertTrue(record.apkFile.exists())
+        assertEquals(1, receivedWarnings.size)
+        assertTrue(record.compatibilityWarning.orEmpty().contains("com.facebook.katana.provider.UserValuesProvider"))
+        assertTrue(record.compatibilityWarning.orEmpty().contains("com.facebook.katana.provider.ACCESS"))
+
+        // Pastikan persistence JSON menyimpan compatibilityWarning secara round-trip
+        val loaded = com.dualapps.cloner.data.ClonedApksRepository(filesDir).loadAll().single()
+        assertEquals(record.compatibilityWarning, loaded.compatibilityWarning)
+    }
+
+    @Test
+    fun completesRuleAApkWhenSkipCompatibilityCheckOverrideEnabledAndRecordsOverride() = runBlocking {
+        val cacheDir = tempFolder.newFolder("cacheOverride")
+        val filesDir = tempFolder.newFolder("filesOverride")
+        val sourceApk = tempFolder.newFile("source-rulea-override.apk")
+        val oldPkg = "com.example.fb"
+        val newPkg = "com.example.fb.clone"
+
+        val manifest = CloneCompatibilityCheckerTest.buildManifestWithProvidersAndPermissions(
+            packageName = oldPkg,
+            permissions = listOf(
+                CloneCompatibilityCheckerTest.Companion.PermDef(
+                    "com.example.permission.prod.FB_APP_COMMUNICATION",
+                    protectionLevel = 0x00000002
+                )
+            ),
+            providers = listOf(
+                CloneCompatibilityCheckerTest.Companion.ProviderDef(
+                    authorities = "$oldPkg.ClientMessagePushDedupInfoProvider",
+                    permission = "com.example.permission.prod.FB_APP_COMMUNICATION"
+                )
+            )
+        )
+        val dexBytes = DexStringReaderTest.buildSyntheticDex(
+            listOf("content://$oldPkg.ClientMessagePushDedupInfoProvider/mutestatus")
+        )
+        AlignedZipWriter(sourceApk).use { w ->
+            w.writeDeflatedEntry("AndroidManifest.xml", manifest)
+            w.writeStoredEntry("resources.arsc", BinaryFixtureBuilder.buildArsc(oldPkg), AlignedZipWriter.ALIGN_DEFAULT)
+            w.writeDeflatedEntry("classes.dex", dexBytes)
+        }
+
+        val receivedWarnings = mutableListOf<String>()
+        val pipeline = ClonePipeline(
+            cacheDir = cacheDir,
+            filesDir = filesDir,
+            keystoreManager = DeviceKeystoreManager(filesDir),
+            archivePackageReader = { apkFile ->
+                java.util.zip.ZipFile(apkFile).use { zip ->
+                    val mf = zip.getInputStream(zip.getEntry("AndroidManifest.xml")).readBytes()
+                    AxmlPatcher.readPackageName(mf)
+                }
+            },
+            isPackageInstalled = { false }
+        )
+
+        val record = pipeline.execute(
+            request = CloneRequest(
+                sourceApkPath = sourceApk.absolutePath,
+                isSplitApk = false,
+                originalAppName = "FB Demo",
+                originalPackageName = oldPkg,
+                cloneName = "FB Demo", // sama agar tidak trigger label patch pada manifest sintetis minimal
+                clonePackageName = newPkg,
+                skipCompatibilityCheck = true
+            ),
+            onCompatibilityWarning = { receivedWarnings.add(it) }
+        )
+
+        assertEquals(newPkg, record.clonePackageName)
+        assertTrue(record.apkFile.exists())
+        assertEquals(1, receivedWarnings.size)
+        assertEquals(ClonePipeline.OVERRIDE_WARNING_NOTE, record.compatibilityWarning)
+        assertEquals(
+            CloneStartAction.RunPipeline,
+            CloneProgressStartResolver.resolve(
+                clonePackageName = newPkg,
+                savedRecordJson = record.toJsonString(),
+                existingRecords = listOf(record),
+                isExplicitRetry = false,
+                isUpdateRun = false,
+                skipCompatibilityCheck = true
+            )
+        )
+    }
 }

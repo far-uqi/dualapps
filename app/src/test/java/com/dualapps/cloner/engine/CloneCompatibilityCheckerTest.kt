@@ -145,6 +145,148 @@ class CloneCompatibilityCheckerTest {
         assertTrue(msg.contains("tertutup sendiri"))
     }
 
+    // --- Fase 13.2: Pemisahan keparahan Aturan A (BLOCKING) vs Aturan B (WARNING) ---
+
+    @Test
+    fun ruleAOnlyProducesOneBlockingAndZeroWarnings() {
+        val manifest = buildManifestWithProvidersAndPermissions(
+            packageName = "com.example.katana",
+            permissions = listOf(
+                PermDef("com.example.permission.prod.FB_APP_COMMUNICATION", protectionLevel = 0x00000002)
+            ),
+            providers = listOf(
+                ProviderDef(
+                    authorities = "com.example.katana.ClientMessagePushDedupInfoProvider",
+                    permission = "com.example.permission.prod.FB_APP_COMMUNICATION"
+                )
+            )
+        )
+        val report = CloneCompatibilityChecker.check(
+            manifest,
+            listOf("content://com.example.katana.ClientMessagePushDedupInfoProvider/mutestatus")
+        )
+        assertTrue(report.hasBlockingIssues)
+        assertFalse(report.hasWarnings)
+        assertEquals(1, report.blockingIssues.size)
+        assertTrue(report.warnings.isEmpty())
+        assertEquals(CompatibilityRule.A, report.blockingIssues.single().rule)
+        assertEquals(CompatibilitySeverity.BLOCKING, report.blockingIssues.single().severity)
+    }
+
+    @Test
+    fun ruleBOnlyMuseLikeProducesOneWarningAndZeroBlocking() {
+        val manifest = buildManifestWithProvidersAndPermissions(
+            packageName = "com.facebook.aura",
+            permissions = emptyList(),
+            providers = listOf(ProviderDef(authorities = "com.facebook.aura.aura.fileprovider"))
+        )
+        val resolver = ContentProviderResolver { auth ->
+            if (auth == "com.facebook.katana.provider.UserValuesProvider") {
+                ResolvedProviderInfo(
+                    authority = auth,
+                    isSignatureProtected = true,
+                    signaturePermissionName = "com.facebook.katana.provider.ACCESS",
+                    ownerPackageName = "com.facebook.katana"
+                )
+            } else null
+        }
+
+        val report = CloneCompatibilityChecker.check(
+            manifest,
+            listOf("content://com.facebook.katana.provider.UserValuesProvider/user_values"),
+            resolver
+        )
+        assertFalse(report.hasBlockingIssues)
+        assertTrue(report.hasWarnings)
+        assertTrue(report.blockingIssues.isEmpty())
+        assertEquals(1, report.warnings.size)
+        val w = report.warnings.single()
+        assertEquals(CompatibilityRule.B, w.rule)
+        assertEquals(CompatibilitySeverity.WARNING, w.severity)
+        assertEquals("com.facebook.katana.provider.UserValuesProvider", w.authority)
+        assertEquals("com.facebook.katana.provider.ACCESS", w.permission)
+    }
+
+    @Test
+    fun ruleAPlusRuleBIsBlockingAndRuleAWins() {
+        val manifest = buildManifestWithProvidersAndPermissions(
+            packageName = "com.example.katana",
+            permissions = listOf(
+                PermDef("com.example.permission.prod.FB_APP_COMMUNICATION", protectionLevel = 0x00000002)
+            ),
+            providers = listOf(
+                ProviderDef(
+                    authorities = "com.example.katana.ClientMessagePushDedupInfoProvider",
+                    permission = "com.example.permission.prod.FB_APP_COMMUNICATION"
+                )
+            )
+        )
+        val resolver = ContentProviderResolver { auth ->
+            if (auth == "com.facebook.orca.ClientMessagePushDedupInfoProvider") {
+                ResolvedProviderInfo(
+                    authority = auth,
+                    isSignatureProtected = true,
+                    signaturePermissionName = "com.facebook.permission.prod.FB_APP_COMMUNICATION",
+                    ownerPackageName = "com.facebook.orca"
+                )
+            } else null
+        }
+
+        val report = CloneCompatibilityChecker.check(
+            manifest,
+            listOf(
+                "content://com.example.katana.ClientMessagePushDedupInfoProvider/mutestatus",
+                "content://com.facebook.orca.ClientMessagePushDedupInfoProvider/mutestatus"
+            ),
+            resolver
+        )
+        assertTrue(report.hasBlockingIssues)
+        assertTrue(report.hasWarnings)
+        assertEquals(1, report.blockingIssues.size)
+        assertEquals(1, report.warnings.size)
+        val blockingMsg = report.formatUserMessage()
+        assertTrue(blockingMsg.contains("com.example.katana.ClientMessagePushDedupInfoProvider"))
+        assertTrue(blockingMsg.contains("tidak bisa di-clone"))
+    }
+
+    @Test
+    fun cleanMuseLikeManifestHasNoBlockingAndNoWarnings() {
+        val manifest = buildManifestWithProvidersAndPermissions(
+            packageName = "com.facebook.aura",
+            permissions = emptyList(),
+            providers = listOf(ProviderDef(authorities = "com.facebook.aura.aura.fileprovider"))
+        )
+        val report = CloneCompatibilityChecker.check(
+            manifest,
+            listOf("content://com.facebook.aura.aura.fileprovider/shared")
+        )
+        assertFalse(report.hasBlockingIssues)
+        assertFalse(report.hasWarnings)
+        assertTrue(report.isCompatible)
+        assertEquals("", report.formatWarningMessage())
+    }
+
+    @Test
+    fun ruleBWarningMessageIncludesAuthorityPermissionAndConsequence() {
+        val report = CompatibilityReport(
+            issues = listOf(
+                CompatibilityIssue(
+                    authority = "com.facebook.katana.provider.UserValuesProvider",
+                    permission = "com.facebook.katana.provider.ACCESS",
+                    reason = "aplikasinya memanggil provider com.facebook.katana.provider.UserValuesProvider milik com.facebook.katana yang dikunci permission signature com.facebook.katana.provider.ACCESS.",
+                    rule = CompatibilityRule.B,
+                    severity = CompatibilitySeverity.WARNING,
+                    ownerPackageName = "com.facebook.katana"
+                )
+            )
+        )
+        val warningMsg = report.formatWarningMessage()
+        assertTrue(warningMsg.startsWith("Peringatan:"))
+        assertTrue(warningMsg.contains("com.facebook.katana.provider.UserValuesProvider"))
+        assertTrue(warningMsg.contains("com.facebook.katana.provider.ACCESS"))
+        assertTrue(warningMsg.contains("risiko clone tertutup"))
+    }
+
     companion object {
         data class PermDef(val name: String, val protectionLevel: Int)
         data class ProviderDef(

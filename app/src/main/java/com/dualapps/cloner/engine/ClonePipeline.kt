@@ -65,7 +65,8 @@ data class CloneRequest(
     val sourceOrigin: String = "",
     val isUpdate: Boolean = false,
     val existingRecordId: String? = null,
-    val previousSourceVersionCode: Long = 0L
+    val previousSourceVersionCode: Long = 0L,
+    val skipCompatibilityCheck: Boolean = false
 )
 
 /**
@@ -85,7 +86,8 @@ class ClonePipeline(
         request: CloneRequest,
         onStepStart: (CloneStep) -> Unit = {},
         onStepDone: (CloneStep) -> Unit = {},
-        onFileProgress: (fileIndex: Int, totalFiles: Int, fileName: String) -> Unit = { _, _, _ -> }
+        onFileProgress: (fileIndex: Int, totalFiles: Int, fileName: String) -> Unit = { _, _, _ -> },
+        onCompatibilityWarning: (String) -> Unit = {}
     ): ClonedApkRecord = withContext(Dispatchers.IO) {
         val workId = UUID.randomUUID().toString()
         val workDir = File(File(cacheDir, "clone_work"), workId)
@@ -171,21 +173,34 @@ class ClonePipeline(
                 }
             }
 
-            // Pemeriksaan kompatibilitas pra-clone (Fase 13): deteksi fail-fast sebelum patching AXML
+            // Pemeriksaan kompatibilitas pra-clone (Fase 13 & 13.2):
+            // Aturan A memblokir (BLOCKING); Aturan B memperingatkan dan lanjut (WARNING);
+            // override satu kali (skipCompatibilityCheck) melewati pemeriksaan dan mencatatnya di record.
             checkCancelled()
-            val copiedApksForCheck = buildList {
-                add(copiedBase)
-                copiedSplits.forEach { add(it.second) }
-            }
-            val compatibilityReport = CloneCompatibilityChecker.checkApkFiles(
-                apkFiles = copiedApksForCheck,
-                contentProviderResolver = contentProviderResolver
-            )
-            if (!compatibilityReport.isCompatible) {
-                throw CloneException(
-                    CloneError.INCOMPATIBLE_APP,
-                    compatibilityReport.formatUserMessage()
+            var recordedCompatibilityWarning: String? = null
+            if (request.skipCompatibilityCheck) {
+                recordedCompatibilityWarning = OVERRIDE_WARNING_NOTE
+                onCompatibilityWarning(OVERRIDE_WARNING_NOTE)
+            } else {
+                val copiedApksForCheck = buildList {
+                    add(copiedBase)
+                    copiedSplits.forEach { add(it.second) }
+                }
+                val compatibilityReport = CloneCompatibilityChecker.checkApkFiles(
+                    apkFiles = copiedApksForCheck,
+                    contentProviderResolver = contentProviderResolver
                 )
+                if (compatibilityReport.hasBlockingIssues) {
+                    throw CloneException(
+                        CloneError.INCOMPATIBLE_APP,
+                        compatibilityReport.formatUserMessage()
+                    )
+                }
+                if (compatibilityReport.hasWarnings) {
+                    val warningText = compatibilityReport.formatWarningMessage()
+                    recordedCompatibilityWarning = warningText
+                    onCompatibilityWarning(warningText)
+                }
             }
             onStepDone(activeStep)
 
@@ -432,7 +447,8 @@ class ClonePipeline(
                     sourceVersionCode = request.sourceVersionCode,
                     sourceVersionName = request.sourceVersionName,
                     customIconPath = persistedIconPath,
-                    sourceOrigin = request.sourceOrigin
+                    sourceOrigin = request.sourceOrigin,
+                    compatibilityWarning = recordedCompatibilityWarning
                 )
             } else {
                 val stagingDir = File(outputDir, "${safeFileBase}_staging_$now")
@@ -483,7 +499,8 @@ class ClonePipeline(
                     sourceVersionCode = request.sourceVersionCode,
                     sourceVersionName = request.sourceVersionName,
                     customIconPath = persistedIconPath,
-                    sourceOrigin = request.sourceOrigin
+                    sourceOrigin = request.sourceOrigin,
+                    compatibilityWarning = recordedCompatibilityWarning
                 )
             }
 
@@ -510,6 +527,9 @@ class ClonePipeline(
     }
 
     companion object {
+        const val OVERRIDE_WARNING_NOTE =
+            "Pemeriksaan kompatibilitas dilewati atas pilihan pengguna (risiko crash saat dibuka)."
+
         internal fun sanitizeSplitFileName(splitName: String, index: Int): String {
             val cleaned = splitName.trim()
                 .removePrefix("split_")
