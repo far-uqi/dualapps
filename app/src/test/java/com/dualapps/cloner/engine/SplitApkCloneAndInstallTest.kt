@@ -566,4 +566,115 @@ class SplitApkCloneAndInstallTest {
             as SplitInstallOutcome.Failure
         assertTrue(incompatible.message.contains("ABI"))
     }
+
+    @Test
+    fun verifiesSplitArchivesViaAxmlAndArscEvenWhenPackageManagerReturnsNullForSplits() = runBlocking {
+        val cacheDir = tempFolder.newFolder("cachePmNullSplit")
+        val filesDir = tempFolder.newFolder("filesPmNullSplit")
+        val oldPkg = "com.facebook.aura"
+        val newPkg = "com.facebook.aura.clone3"
+
+        val baseApk = tempFolder.newFile("pmnull_base.apk")
+        BinaryFixtureBuilder.buildFixtureApk(baseApk, oldPkg)
+
+        val abiSplit = tempFolder.newFile("pmnull_browser_engine.apk")
+        buildAbiSplitApk(abiSplit, oldPkg)
+
+        val densitySplit = tempFolder.newFile("pmnull_xxhdpi.apk")
+        buildDensitySplitApk(
+            output = densitySplit,
+            packageName = oldPkg,
+            fgResId = 0x7F0800A7,
+            fgPath = "res/drawable-xxhdpi-v4/ic_launcher_foreground.png",
+            origFgBytes = "ORIG_FG".toByteArray()
+        )
+
+        var readerCallsOnSplit = 0
+        val pipeline = ClonePipeline(
+            cacheDir = cacheDir,
+            filesDir = filesDir,
+            keystoreManager = DeviceKeystoreManager(filesDir),
+            // Simulasikan perilaku nyata PackageManager.getPackageArchiveInfo() di Android 11:
+            // hanya mengembalikan packageName untuk base.apk, dan SELALU null untuk file split.
+            archivePackageReader = { apk ->
+                if (apk.name.contains("split_")) {
+                    readerCallsOnSplit++
+                    null
+                } else {
+                    ZipFile(apk).use { z ->
+                        AxmlPatcher.readPackageName(z.getInputStream(z.getEntry("AndroidManifest.xml")).readBytes())
+                    }
+                }
+            },
+            isPackageInstalled = { false }
+        )
+
+        val record = pipeline.execute(
+            CloneRequest(
+                sourceApkPath = baseApk.absolutePath,
+                isSplitApk = true,
+                originalAppName = "Dualapps",
+                originalPackageName = oldPkg,
+                cloneName = "Muse Split",
+                clonePackageName = newPkg,
+                splitApkPaths = listOf(
+                    SplitApkFile("browser_engine", abiSplit.absolutePath, abiSplit.length()),
+                    SplitApkFile("config.xxhdpi", densitySplit.absolutePath, densitySplit.length())
+                )
+            )
+        )
+
+        assertEquals(0, readerCallsOnSplit)
+        assertTrue(record.isSplitClone)
+        assertEquals(3, record.totalFileCount)
+        assertEquals(newPkg, record.clonePackageName)
+        assertTrue(record.allApkFiles.all { it.exists() })
+    }
+
+    @Test
+    fun verifySplitArchiveRejectsMismatchedManifestPackage() {
+        val wrongManifestSplit = tempFolder.newFile("wrong_manifest_split.apk")
+        buildAbiSplitApk(wrongManifestSplit, "com.wrong.package")
+
+        try {
+            ClonePipeline.verifySplitArchive(
+                signedSplit = wrongManifestSplit,
+                expectedPackage = "com.facebook.aura.clone3",
+                displayName = "split_browser_engine.apk"
+            )
+            fail("Seharusnya melempar VERIFY_PACKAGE_MISMATCH")
+        } catch (e: CloneException) {
+            assertEquals(CloneError.VERIFY_PACKAGE_MISMATCH, e.error)
+            assertTrue(e.message.orEmpty().contains("com.facebook.aura.clone3"))
+            assertTrue(e.message.orEmpty().contains("com.wrong.package"))
+        }
+    }
+
+    @Test
+    fun verifySplitArchiveRejectsMismatchedArscPackage() {
+        val wrongArscSplit = tempFolder.newFile("wrong_arsc_split.apk")
+        val manifestWithNewPkg = BinaryFixtureBuilder.buildManifestAxml(
+            packageName = "com.facebook.aura.clone3",
+            useUtf8 = true,
+            labelLiteral = null
+        )
+        val arscWithOldPkg = BinaryFixtureBuilder.buildArsc("com.facebook.aura")
+        AlignedZipWriter(wrongArscSplit).use { w ->
+            w.writeDeflatedEntry("AndroidManifest.xml", manifestWithNewPkg)
+            w.writeStoredEntry("resources.arsc", arscWithOldPkg, AlignedZipWriter.ALIGN_DEFAULT)
+        }
+
+        try {
+            ClonePipeline.verifySplitArchive(
+                signedSplit = wrongArscSplit,
+                expectedPackage = "com.facebook.aura.clone3",
+                displayName = "split_config.xxhdpi.apk"
+            )
+            fail("Seharusnya melempar VERIFY_PACKAGE_MISMATCH")
+        } catch (e: CloneException) {
+            assertEquals(CloneError.VERIFY_PACKAGE_MISMATCH, e.error)
+            assertTrue(e.message.orEmpty().contains("com.facebook.aura.clone3"))
+            assertTrue(e.message.orEmpty().contains("com.facebook.aura"))
+        }
+    }
 }

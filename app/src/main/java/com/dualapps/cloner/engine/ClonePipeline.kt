@@ -13,6 +13,7 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.UUID
+import java.util.zip.ZipFile
 
 /**
  * Abstraksi pembaca package name dari berkas APK hasil untuk langkah 7 (verifikasi akhir).
@@ -341,13 +342,11 @@ class ClonePipeline(
             signedSplits.forEachIndexed { idx, (safeName, signedSplit) ->
                 checkCancelled()
                 onFileProgress(idx + 2, totalFiles, safeName)
-                val splitPkg = archivePackageReader.readArchivePackageName(signedSplit)
-                if (splitPkg != request.clonePackageName) {
+                try {
+                    verifySplitArchive(signedSplit, request.clonePackageName, safeName)
+                } catch (e: CloneException) {
                     signedSplit.delete()
-                    throw CloneException(
-                        CloneError.VERIFY_PACKAGE_MISMATCH,
-                        "Verifikasi akhir split '$safeName' gagal: diharapkan '${request.clonePackageName}', terbaca '$splitPkg'."
-                    )
+                    throw e
                 }
             }
             onStepDone(activeStep)
@@ -439,6 +438,65 @@ class ClonePipeline(
                 .replace(Regex("[^A-Za-z0-9._-]"), "_")
                 .ifEmpty { "part_${index + 1}" }
             return "split_$cleaned.apk"
+        }
+
+        /**
+         * Memverifikasi arsip split APK hasil sign dengan membaca langsung `AndroidManifest.xml`
+         * (dan `resources.arsc` bila ada), karena `PackageManager.getPackageArchiveInfo()` hanya
+         * mem-parse APK monolitik/base dan mengembalikan `null` untuk file split (`split="..."`).
+         */
+        internal fun verifySplitArchive(
+            signedSplit: File,
+            expectedPackage: String,
+            displayName: String = signedSplit.name
+        ) {
+            val (manifestPkg, arscPackages) = try {
+                ZipFile(signedSplit).use { zip ->
+                    val manifestEntry = zip.getEntry("AndroidManifest.xml")
+                        ?: throw CloneException(
+                            CloneError.VERIFY_PACKAGE_MISMATCH,
+                            "Verifikasi akhir split '$displayName' gagal: diharapkan '$expectedPackage', terbaca 'null'."
+                        )
+                    val manifestBytes = zip.getInputStream(manifestEntry).use { it.readBytes() }
+                    val parsedManifestPkg = AxmlPatcher.readPackageName(manifestBytes)
+
+                    val arscEntry = zip.getEntry("resources.arsc")
+                    val parsedArscPkgs = if (arscEntry != null) {
+                        val arscBytes = zip.getInputStream(arscEntry).use { it.readBytes() }
+                        ArscPatcher.readPackageNames(arscBytes)
+                    } else {
+                        null
+                    }
+                    parsedManifestPkg to parsedArscPkgs
+                }
+            } catch (e: CloneException) {
+                if (e.error == CloneError.VERIFY_PACKAGE_MISMATCH) throw e
+                throw CloneException(
+                    CloneError.VERIFY_PACKAGE_MISMATCH,
+                    "Verifikasi akhir split '$displayName' gagal: diharapkan '$expectedPackage', terbaca 'null'.",
+                    e
+                )
+            } catch (e: Exception) {
+                throw CloneException(
+                    CloneError.VERIFY_PACKAGE_MISMATCH,
+                    "Verifikasi akhir split '$displayName' gagal: diharapkan '$expectedPackage', terbaca 'null'.",
+                    e
+                )
+            }
+
+            if (manifestPkg != expectedPackage) {
+                throw CloneException(
+                    CloneError.VERIFY_PACKAGE_MISMATCH,
+                    "Verifikasi akhir split '$displayName' gagal: diharapkan '$expectedPackage', terbaca '$manifestPkg'."
+                )
+            }
+
+            if (arscPackages != null && !arscPackages.contains(expectedPackage)) {
+                throw CloneException(
+                    CloneError.VERIFY_PACKAGE_MISMATCH,
+                    "Verifikasi akhir split '$displayName' gagal: diharapkan '$expectedPackage', terbaca '${arscPackages.firstOrNull()}'."
+                )
+            }
         }
     }
 }

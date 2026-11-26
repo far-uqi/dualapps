@@ -1,28 +1,24 @@
 # STATUS — Dualapps
-Terakhir diperbarui: 2026-11-26 09:47 WIB — Fase 10.1 (Diagnosis `VERIFY_PACKAGE_MISMATCH` pada Clone Split) selesai
+Terakhir diperbarui: 2026-11-26 10:31 WIB — Fase 10.2 (Perbaikan Verifikasi Akhir Split APK) selesai
 
 ## Ringkasan fase terakhir
-- Fase: 10.1 — Diagnosis `VERIFY_PACKAGE_MISMATCH` pada clone Split APK (penelitian saja: tanpa perubahan kode sumber, tanpa test baru, tanpa build)
-- Perangkat & gejala uji: HP `RMX1971` (`828bcb13`, Android 11 / SDK 30), clone `com.facebook.aura` → `com.facebook.aura.clone3` (2 file: `base.apk` + `split_browser_engine.apk`), langkah 1–6 OK, gagal di langkah 7 (`VERIFY_PACKAGE_MISMATCH`: `Verifikasi akhir split 'split_browser_engine.apk' gagal: diharapkan 'com.facebook.aura.clone3', terbaca 'null'`).
-- Akar masalah (terbukti dengan `adb pull`, `aapt2`, `logcat`, dan `SplitProbe` pada kelas terkompilasi Fase 10):
-  - **Hipotesis A terbukti (bukan bug `AxmlPatcher`/`ApkRebuilder`):** `ApkRebuilder` + `AxmlPatcher` menghasilkan manifest split 100% valid baik pada `split_browser_engine.apk` (`com.facebook.aura.clone3`, `split="browser_engine"`) maupun split `com.rarlab.rar` (`split_config.arm64_v8a.apk` & `split_config.xxhdpi.apk`), seluruhnya ter-parse bersih oleh `aapt2 dump badging` & `aapt2 dump xmltree`.
-  - Penyebab `null` adalah `ClonePipeline.kt:341-352` memanggil `AndroidArchivePackageReader` (`PackageManager.getPackageArchiveInfo(apkPath, 0)`) pada file split. Di Android (AOSP `ParsingPackageUtils.parseMonolithicPackage`), `getPackageArchiveInfo()` mem-parse berkas sebagai APK monolitik/base dan **mengembalikan `null` untuk semua APK yang memiliki atribut `split="..."`**.
-  - Di unit test JVM Fase 10 (`SplitApkCloneAndInstallTest`), `archivePackageReader` memakai lambda stub yang membaca AXML langsung, sehingga keterbatasan `getPackageArchiveInfo()` pada file split baru terungkap saat uji perangkat nyata.
-- Usulan perbaikan Fase 10.2: pertahankan `getPackageArchiveInfo()` untuk `base.apk` (APK tunggal & base split), dan ganti verifikasi langkah 7 khusus **file split** dengan pembacaan langsung `AndroidManifest.xml` (`AxmlPatcher.readPackageName`) + `resources.arsc` bila ada (`ArscPatcher.readPackageNames`), ditambah 2–3 unit test baru yang mensimulasikan `archivePackageReader` mengembalikan `null` untuk file split.
-- Test: tetap **56/56 lulus** (tidak dijalankan ulang di Fase 10.1 karena tidak ada perubahan kode)
-- Build debug terakhir (Fase 10, commit `3ad1a54`): `app/build/outputs/apk/debug/app-debug.apk` (`10.148.532` byte / ~9,68 MB)
-- Build release terakhir (sebelum Fase 10): `app/build/outputs/apk/release/app-release.apk` (`8.569.998` byte, SHA-256 sertifikat `3536ee18ec6f4e72289bd09d6ff6652a1b99cde78bd998c0aabdeca4525dcd65`)
-- Audit mandiri Fase 10.1: selesai; seluruh klaim Q2–Q4 terbukti dari output perintah nyata (`adb pull`, `aapt2`, `SplitProbe`, kode `ClonePipeline.kt`); pemanggilan langsung `getPackageArchiveInfo()` pada split mentah di luar app belum diuji lewat test harness terpisah (karena larangan ubah kode/build), namun terbukti tidak langsung dari `logcat` PID `18713` + fakta bahwa `signed_base.apk` lolos sedangkan `signed_split_browser_engine.apk` mengembalikan `null` meski manifest hasil patch 100% valid di `aapt2`.
+- Fase: 10.2 — Perbaikan verifikasi akhir file split di `ClonePipeline.kt` (`verifySplitArchive` via AXML + ARSC bila ada, mempertahankan `PackageManager.getPackageArchiveInfo()` khusus untuk `base.apk`) + 3 unit test baru di `SplitApkCloneAndInstallTest.kt`
+- Test: **59/59 lulus** (56 test sebelumnya + 3 test baru Fase 10.2), 0 gagal, 0 dilewati (perintah: `.\gradlew.bat testDebugUnitTest assembleDebug` dengan `JAVA_HOME=C:\Users\Administrator\.jdks\jdk-17.0.21.1+2`)
+- Build debug: **BUILD SUCCESSFUL** — `app/build/outputs/apk/debug/app-debug.apk` (`10.236.233` byte / ~9,76 MB, `EXIT_CODE=0`, durasi total `176.9s`)
+- Commit: satu commit di branch `adil` — `"fix(phase10.2): verify split archives via AXML/ARSC instead of getPackageArchiveInfo"`
+- Audit mandiri Fase 10.2: 0 ketidaksesuaian pada kode/test/build; hanya 1 berkas produksi diubah (`ClonePipeline.kt`); `AxmlPatcher`, `ApkRebuilder`, `ApkSigningEngine`, `ApkInstaller.kt`, dan jalur APK tunggal v1.0 tidak disentuh; pengujian perangkat nyata di HP RMX1971 masih menunggu uji Mukidi.
 
 ## Berkas berubah fase ini
-- STATUS.md (diubah — tidak ada berkas kode sumber, test, atau build yang disentuh)
+- app/src/main/java/com/dualapps/cloner/engine/ClonePipeline.kt (diubah)
+- app/src/test/java/com/dualapps/cloner/engine/SplitApkCloneAndInstallTest.kt (diubah)
+- STATUS.md (diubah)
 
 ## Belum selesai / diketahui bermasalah
-- Perbaikan verifikasi akhir file split di `ClonePipeline.kt` menunggu gas Mukidi untuk dikerjakan di Fase 10.2.
-- Uji perangkat untuk clone split (`com.facebook.aura` + target Fase 9) akan diulang setelah Fase 10.2 selesai.
+- Uji perangkat ulang oleh Mukidi di HP RMX1971 (Android 11 / SDK 30) untuk clone Muse split (`com.facebook.aura`) dan `com.rarlab.rar` (3 file) + instalasi via sesi `PackageInstaller` belum dijalankan pasca-Fase 10.2.
+- Build release (`app/build/outputs/apk/release/app-release.apk`, terakhir `8.569.998` byte, SHA-256 sertifikat `3536ee18ec6f4e72289bd09d6ff6652a1b99cde78bd998c0aabdeca4525dcd65`) belum dibangun ulang pasca-Fase 10/10.2.
 
 ## Langkah berikutnya
-- Menunggu review Cireng dan keputusan gas Mukidi untuk **Fase 10.2: Perbaiki verifikasi akhir split APK di `ClonePipeline.kt` + unit test + uji ulang perangkat**.
+- Uji perangkat oleh Mukidi di HP RMX1971: pasang `app-debug.apk` Fase 10.2 (`.\gradlew.bat installDebug`), ulangi Uji 1 — Muse split (`com.facebook.aura`) dan Uji 2 — RAR (`com.rarlab.rar`, 3 file), pasang via sesi `PackageInstaller`, buka clone, cek nama + ikon launcher, dan laporkan hasilnya.
 
 ## Keterbatasan yang berlaku
 - Clone split yang diekstrak dari satu perangkat hanya terjamin cocok untuk perangkat dengan ABI dan densitas layar yang sama (mis. `arm64-v8a` + `xxhdpi`).
