@@ -1,7 +1,16 @@
 # STATUS — Dualapps
-Terakhir diperbarui: 2026-11-26 13:40 WIB — Fase 12.1 (Diagnosis Gagal Install Clone Facebook `STATUS_FAILURE_CONFLICT`) selesai
+Terakhir diperbarui: 2026-11-26 14:06 WIB — Fase 12.2 (Perbaikan AxmlPatcher: Authority Berspasi + Permission Non-Prefixed) selesai
 
 ## Ringkasan fase terakhir
+- Fase: 12.2 — Perbaikan dua celah `AxmlPatcher.kt` hasil diagnosis Fase 12.1:
+  1. `rewriteAuthorities` sekarang membandingkan tiap bagian `split(";")` dalam bentuk trim sambil mempertahankan leading/trailing whitespace aslinya (sehingga `"com.facebook.katana.quicksilver.fileprovider; com.facebook.katana.apkfileprovider"` menjadi `"com.facebook.katana.clone.quicksilver.fileprovider; com.facebook.katana.clone.apkfileprovider"`).
+  2. Pass 1 (`collectDeclaredNonPrefixedPermissions`) mengumpulkan seluruh `<permission android:name="X">` yang dideklarasikan target namun tidak berawalan `<oldPackage>.` lalu me-rename dengan skema deterministik `<newPackage>.<X>`, dan Pass 2 memperbarui seluruh referensinya di manifest (`<uses-permission>`, atribut `permission`/`readPermission`/`writePermission`, atau atribut lain bernilai persis `X`) tanpa menyentuh `<uses-permission>` milik aplikasi lain.
+- Test: **86/86 lulus** (80 test sebelumnya + 6 test baru Fase 12.2 di `AxmlPatcherTest`), 0 gagal, 0 dilewati (perintah: `.\gradlew.bat testDebugUnitTest assembleDebug` dengan `JAVA_HOME=C:\Users\Administrator\.jdks\jdk-17.0.21.1+2`)
+- Build debug: **BUILD SUCCESSFUL** — `app/build/outputs/apk/debug/app-debug.apk` (`10.286.642` byte / ~9,81 MB, `EXIT_CODE=0`, durasi total `157.21s`)
+- Commit: satu commit di branch `adil` — `"fix(phase12.2): patch whitespace-separated authorities and non-prefixed permissions in AxmlPatcher"`
+- Audit mandiri Fase 12.2: 0 ketidaksesuaian pada kode/test/build; `ArscPatcher`, `AlignedZipWriter`, `ApkRebuilder`, `CloneIdentityPatcher`, `ApkSigningEngine`, `CloneUpdateChecker`, logika `isUpdate`, dan `AndroidManifest.xml` tidak disentuh; uji perangkat pada HP RMX1971 (clone Facebook + regresi Muse) menunggu eksekusi Cak.
+
+## Ringkasan Fase 12.1 (Diagnosis)
 - Fase: 12.1 — **Diagnosis only** (tanpa ubah kode/test/build) atas kegagalan pasang clone Facebook (`com.facebook.katana` → `com.facebook.katana.clone`, 14 file / 295,2 MB) dengan `STATUS_FAILURE_CONFLICT` di HP RMX1971 (Android 11 / SDK 30).
 - Bukti langsung (`adb pull` 14 APK + `aapt2 dump xmltree` + `dumpsys package` seluruh 7 paket Facebook + eksekusi langsung `AxmlPatcher.patch` & `ArscPatcher.patch` lewat `FbSplitProbe` di scratch):
   - Seluruh 31 `<provider>` (32 authority) dan 7 `<permission>` hanya berada di `base.apk` (13 split lainnya punya 0 provider & 0 permission) dan **semuanya literal** (0 referensi `@string/...` → H2 gugur untuk Facebook).

@@ -39,6 +39,7 @@ object AxmlPatcher {
         "application", "activity", "activity-alias", "service", "receiver", "provider"
     )
     private val PERMISSION_TAGS = setOf("permission", "uses-permission", "uses-permission-sdk-23")
+    private val PERMISSION_REF_ATTRS = setOf("permission", "readPermission", "writePermission")
 
     fun patch(axmlBytes: ByteArray, oldPackage: String, newPackage: String): ByteArray {
         if (oldPackage.isBlank() || newPackage.isBlank()) {
@@ -393,6 +394,16 @@ object AxmlPatcher {
     ) {
         val oldPrefix = "$oldPackage."
         val newPrefix = "$newPackage."
+
+        // Pass 1: Kumpulkan semua `<permission android:name="X">` yang dideklarasikan aplikasi target
+        // tetapi TIDAK berawalan `<oldPackage>.` (dan bukan persis `<oldPackage>`), lalu petakan ke `<newPackage>.<X>`.
+        val renamedNonPrefixedPermissions = collectDeclaredNonPrefixedPermissions(
+            chunksBytes = chunksBytes,
+            pool = pool,
+            oldPackage = oldPackage,
+            newPackage = newPackage
+        )
+
         var offset = 0
 
         while (offset + 8 <= chunksBytes.size) {
@@ -435,14 +446,27 @@ object AxmlPatcher {
                             rewriteAuthorities(currentValue, oldPackage, newPackage)
                         }
                         tagName in PERMISSION_TAGS && attrName == "name" -> {
-                            if (currentValue.startsWith(oldPrefix)) {
-                                newPrefix + currentValue.removePrefix(oldPrefix)
-                            } else null
+                            when {
+                                currentValue.startsWith(oldPrefix) -> {
+                                    newPrefix + currentValue.removePrefix(oldPrefix)
+                                }
+                                renamedNonPrefixedPermissions.containsKey(currentValue) -> {
+                                    renamedNonPrefixedPermissions[currentValue]
+                                }
+                                else -> null
+                            }
+                        }
+                        attrName in PERMISSION_REF_ATTRS && renamedNonPrefixedPermissions.containsKey(currentValue) -> {
+                            renamedNonPrefixedPermissions[currentValue]
                         }
                         tagName in COMPONENT_TAGS && attrName == "name" -> {
                             if (currentValue.startsWith(".")) {
                                 oldPackage + currentValue
                             } else null
+                        }
+                        renamedNonPrefixedPermissions.containsKey(currentValue) -> {
+                            // Atribut lain yang nilainya persis sama dengan permission yang di-rename
+                            renamedNonPrefixedPermissions[currentValue]
                         }
                         else -> null
                     }
@@ -463,19 +487,81 @@ object AxmlPatcher {
         }
     }
 
+    private fun collectDeclaredNonPrefixedPermissions(
+        chunksBytes: ByteArray,
+        pool: AxmlStringPool,
+        oldPackage: String,
+        newPackage: String
+    ): Map<String, String> {
+        val oldPrefix = "$oldPackage."
+        val newPrefix = "$newPackage."
+        val result = LinkedHashMap<String, String>()
+        var offset = 0
+
+        while (offset + 8 <= chunksBytes.size) {
+            val type = readU16(chunksBytes, offset)
+            val headerSize = readU16(chunksBytes, offset + 2)
+            val chunkSize = readI32(chunksBytes, offset + 4)
+            if (chunkSize < 8 || offset + chunkSize > chunksBytes.size) {
+                throw CloneException(CloneError.AXML_PARSE_FAILED, "Chunk AXML rusak saat memindai permission.")
+            }
+
+            if (type == RES_XML_START_ELEMENT_TYPE && offset + headerSize + 20 <= offset + chunkSize) {
+                val extStart = offset + headerSize
+                val nameIdx = readI32(chunksBytes, extStart + 4)
+                val tagName = pool.strings.getOrNull(nameIdx)
+                if (tagName == "permission") {
+                    val attributeStart = readU16(chunksBytes, extStart + 8)
+                    val attributeSize = readU16(chunksBytes, extStart + 10)
+                    val attributeCount = readU16(chunksBytes, extStart + 12)
+                    val attrsBase = extStart + attributeStart
+                    for (i in 0 until attributeCount) {
+                        val attrOff = attrsBase + i * attributeSize
+                        if (attrOff + 20 > offset + chunkSize) break
+                        val attrName = pool.strings.getOrNull(readI32(chunksBytes, attrOff + 4))
+                        if (attrName == "name") {
+                            val rawValueIdx = readI32(chunksBytes, attrOff + 8)
+                            val valueType = chunksBytes[attrOff + 15].toInt() and 0xFF
+                            val valueData = readI32(chunksBytes, attrOff + 16)
+                            val strIdx = when {
+                                rawValueIdx >= 0 -> rawValueIdx
+                                valueType == TYPE_STRING && valueData >= 0 -> valueData
+                                else -> -1
+                            }
+                            val permName = pool.strings.getOrNull(strIdx).orEmpty()
+                            if (permName.isNotBlank() &&
+                                permName != oldPackage &&
+                                permName != newPackage &&
+                                !permName.startsWith(oldPrefix) &&
+                                !permName.startsWith(newPrefix)
+                            ) {
+                                result[permName] = "$newPackage.$permName"
+                            }
+                        }
+                    }
+                }
+            }
+            offset += chunkSize
+        }
+        return result
+    }
+
     private fun rewriteAuthorities(authorities: String, oldPackage: String, newPackage: String): String? {
         val oldPrefix = "$oldPackage."
         val newPrefix = "$newPackage."
         var changed = false
         val rewritten = authorities.split(";").joinToString(";") { part ->
+            val leadingWs = part.takeWhile { it.isWhitespace() }
+            val trailingWs = part.takeLastWhile { it.isWhitespace() }
+            val trimmed = part.trim()
             when {
-                part == oldPackage -> {
+                trimmed == oldPackage -> {
                     changed = true
-                    newPackage
+                    leadingWs + newPackage + trailingWs
                 }
-                part.startsWith(oldPrefix) -> {
+                trimmed.startsWith(oldPrefix) -> {
                     changed = true
-                    newPrefix + part.removePrefix(oldPrefix)
+                    leadingWs + newPrefix + trimmed.removePrefix(oldPrefix) + trailingWs
                 }
                 else -> part
             }
