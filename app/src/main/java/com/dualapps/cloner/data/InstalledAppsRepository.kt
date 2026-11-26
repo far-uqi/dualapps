@@ -2,8 +2,10 @@ package com.dualapps.cloner.data
 
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
+import android.os.Build
 import com.dualapps.cloner.model.AppSortOrder
 import com.dualapps.cloner.model.InstalledApp
+import com.dualapps.cloner.model.SplitApkFile
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -20,27 +22,59 @@ class InstalledAppsRepository(
                 packageManager.getApplicationLabel(appInfo).toString().trim()
             }.getOrNull().takeUnless { it.isNullOrEmpty() } ?: appInfo.packageName
 
-            val versionName = runCatching {
+            val pkgInfo = runCatching {
                 @Suppress("DEPRECATION")
-                packageManager.getPackageInfo(appInfo.packageName, 0).versionName
+                packageManager.getPackageInfo(appInfo.packageName, 0)
             }.getOrNull()
+            val versionName = pkgInfo?.versionName
+            val versionCode = pkgInfo?.let { info ->
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                    info.longVersionCode
+                } else {
+                    @Suppress("DEPRECATION")
+                    info.versionCode.toLong()
+                }
+            } ?: 0L
 
             val isSystem = (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0
-            val isSplit = !appInfo.splitSourceDirs.isNullOrEmpty()
+            val splitFiles = buildSplitFiles(appInfo.splitSourceDirs, appInfo.splitNames)
+            val isSplit = splitFiles.isNotEmpty()
+            val baseSize = if (apkFile.exists()) apkFile.length() else 0L
+            val totalSize = baseSize + splitFiles.sumOf { it.sizeBytes }
 
             InstalledApp(
                 packageName = appInfo.packageName,
                 label = label,
-                apkSizeBytes = if (apkFile.exists()) apkFile.length() else 0L,
+                apkSizeBytes = totalSize,
                 sourceDir = sourceDir,
                 isSystemApp = isSystem,
                 isSplitApk = isSplit,
-                versionName = versionName
+                versionName = versionName,
+                splitFiles = splitFiles,
+                versionCode = versionCode
             )
         }
     }
 
     companion object {
+        fun buildSplitFiles(
+            splitSourceDirs: Array<String>?,
+            splitNames: Array<String>?
+        ): List<SplitApkFile> {
+            if (splitSourceDirs.isNullOrEmpty()) return emptyList()
+            return splitSourceDirs.mapIndexed { index, dirPath ->
+                val file = File(dirPath)
+                val name = splitNames?.getOrNull(index)
+                    ?.takeIf { it.isNotBlank() }
+                    ?: file.nameWithoutExtension.removePrefix("split_")
+                val size = if (file.exists()) file.length() else 0L
+                SplitApkFile(
+                    splitName = name,
+                    path = dirPath,
+                    sizeBytes = size
+                )
+            }
+        }
         fun filterAndSort(
             apps: List<InstalledApp>,
             query: String,

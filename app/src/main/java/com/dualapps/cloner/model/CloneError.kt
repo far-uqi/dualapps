@@ -44,6 +44,15 @@ enum class CloneError(val userMessage: String) {
     LABEL_PATCH_FAILED(
         "Gagal mengubah nama launcher pada APK hasil clone. Atribut label tidak ditemukan atau struktur string di resources.arsc tidak didukung."
     ),
+    SPLIT_PATCH_FAILED(
+        "Gagal memodifikasi salah satu berkas Split APK. Struktur manifest atau resource split aplikasi ini kemungkinan tidak standar."
+    ),
+    SPLIT_INSTALL_FAILED(
+        "Pemasangan multi-APK (Split APK) gagal atau ditolak oleh sistem Android. Periksa ruang penyimpanan atau kompatibilitas aplikasi target."
+    ),
+    SESSION_FAILED(
+        "Gagal membuat atau menyelesaikan sesi pemasangan PackageInstaller. Pastikan Dualapps tetap terbuka di layar depan lalu coba lagi."
+    ),
     CANCELLED(
         "Proses clone dibatalkan oleh pengguna."
     ),

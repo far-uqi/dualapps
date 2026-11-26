@@ -48,7 +48,16 @@ class ClonedApksAdapter(
             )
             binding.tvCloneName.text = record.cloneName
             binding.tvClonePackage.text = record.clonePackageName
-            binding.tvApkSize.text = FormatUtils.formatFileSize(record.apkSizeBytes)
+            val sizeText = FormatUtils.formatFileSize(record.apkSizeBytes)
+            binding.tvApkSize.text = if (record.isSplitClone) {
+                binding.root.context.getString(
+                    R.string.result_size_split_format,
+                    sizeText,
+                    record.totalFileCount
+                )
+            } else {
+                sizeText
+            }
             binding.tvCreatedAt.text = FormatUtils.formatTimestamp(record.createdAtMillis)
 
             binding.btnInstall.setOnClickListener { onInstallClick(record) }

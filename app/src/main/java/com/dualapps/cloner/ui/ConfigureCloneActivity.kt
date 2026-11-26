@@ -16,6 +16,7 @@ import com.dualapps.cloner.data.AndroidApkArchiveInspector
 import com.dualapps.cloner.databinding.ActivityConfigureCloneBinding
 import com.dualapps.cloner.engine.PackageNameValidator
 import com.dualapps.cloner.model.InstalledApp
+import com.dualapps.cloner.model.SplitApkFile
 import com.dualapps.cloner.util.FormatUtils
 import com.dualapps.cloner.util.IconProcessor
 import java.io.File
@@ -29,8 +30,10 @@ class ConfigureCloneActivity : AppCompatActivity() {
     private lateinit var sourceName: String
     private lateinit var sourceDir: String
     private var sourceSizeBytes: Long = 0L
+    private var sourceVersionCode: Long = 0L
     private var isSplitApk: Boolean = false
     private var isFromApkFile: Boolean = false
+    private var splitFiles: List<SplitApkFile> = emptyList()
     private var isCurrentPackageValid: Boolean = false
     private var originalAppIcon: Drawable? = null
     private var customIconFile: File? = null
@@ -52,8 +55,10 @@ class ConfigureCloneActivity : AppCompatActivity() {
         sourceName = intent.getStringExtra(EXTRA_APP_NAME).orEmpty()
         sourceDir = intent.getStringExtra(EXTRA_SOURCE_DIR).orEmpty()
         sourceSizeBytes = intent.getLongExtra(EXTRA_APK_SIZE, 0L)
+        sourceVersionCode = intent.getLongExtra(EXTRA_VERSION_CODE, 0L)
         isSplitApk = intent.getBooleanExtra(EXTRA_IS_SPLIT, false)
         isFromApkFile = intent.getBooleanExtra(EXTRA_IS_FROM_APK_FILE, false)
+        splitFiles = readSplitFilesFromIntent()
 
         if (sourcePackage.isEmpty() || sourceDir.isEmpty()) {
             finish()
@@ -72,6 +77,25 @@ class ConfigureCloneActivity : AppCompatActivity() {
         binding.tvSourceName.text = sourceName
         binding.tvSourcePackage.text = sourcePackage
         binding.tvSourceSize.text = FormatUtils.formatFileSize(sourceSizeBytes)
+
+        if (splitFiles.isNotEmpty()) {
+            binding.cardSplitFiles.visibility = View.VISIBLE
+            binding.tvSplitFilesHeader.text = getString(
+                R.string.label_split_files_header,
+                1 + splitFiles.size,
+                FormatUtils.formatFileSize(sourceSizeBytes)
+            )
+            val baseSize = (sourceSizeBytes - splitFiles.sumOf { it.sizeBytes }).coerceAtLeast(0L)
+            val lines = buildList {
+                add("• base.apk (${FormatUtils.formatFileSize(baseSize)})")
+                splitFiles.forEach { sf ->
+                    add("• ${sf.splitName} (${FormatUtils.formatFileSize(sf.sizeBytes)})")
+                }
+            }
+            binding.tvSplitFilesList.text = lines.joinToString("\n")
+        } else {
+            binding.cardSplitFiles.visibility = View.GONE
+        }
 
         originalAppIcon = if (isFromApkFile) {
             AndroidApkArchiveInspector.loadArchiveIcon(packageManager, File(sourceDir))
@@ -130,7 +154,9 @@ class ConfigureCloneActivity : AppCompatActivity() {
                     originalPackageName = sourcePackage,
                     cloneName = cloneName,
                     clonePackageName = clonePackage,
-                    customIconPath = customIconFile?.absolutePath
+                    customIconPath = customIconFile?.absolutePath,
+                    splitFiles = splitFiles,
+                    sourceVersionCode = sourceVersionCode
                 )
             )
         }
@@ -199,13 +225,31 @@ class ConfigureCloneActivity : AppCompatActivity() {
         }.getOrDefault(false)
     }
 
+    private fun readSplitFilesFromIntent(): List<SplitApkFile> {
+        val names = intent.getStringArrayListExtra(EXTRA_SPLIT_NAMES) ?: return emptyList()
+        val paths = intent.getStringArrayListExtra(EXTRA_SPLIT_PATHS) ?: return emptyList()
+        val sizes = intent.getLongArrayExtra(EXTRA_SPLIT_SIZES) ?: LongArray(0)
+        val count = minOf(names.size, paths.size)
+        return (0 until count).map { i ->
+            SplitApkFile(
+                splitName = names[i],
+                path = paths[i],
+                sizeBytes = sizes.getOrElse(i) { 0L }
+            )
+        }
+    }
+
     companion object {
         private const val EXTRA_PACKAGE_NAME = "extra_package_name"
         private const val EXTRA_APP_NAME = "extra_app_name"
         private const val EXTRA_SOURCE_DIR = "extra_source_dir"
         private const val EXTRA_APK_SIZE = "extra_apk_size"
+        private const val EXTRA_VERSION_CODE = "extra_version_code"
         private const val EXTRA_IS_SPLIT = "extra_is_split"
         private const val EXTRA_IS_FROM_APK_FILE = "extra_is_from_apk_file"
+        private const val EXTRA_SPLIT_NAMES = "extra_split_names"
+        private const val EXTRA_SPLIT_PATHS = "extra_split_paths"
+        private const val EXTRA_SPLIT_SIZES = "extra_split_sizes"
 
         fun createIntent(
             context: Context,
@@ -217,8 +261,14 @@ class ConfigureCloneActivity : AppCompatActivity() {
                 putExtra(EXTRA_APP_NAME, app.label)
                 putExtra(EXTRA_SOURCE_DIR, app.sourceDir)
                 putExtra(EXTRA_APK_SIZE, app.apkSizeBytes)
+                putExtra(EXTRA_VERSION_CODE, app.versionCode)
                 putExtra(EXTRA_IS_SPLIT, app.isSplitApk)
                 putExtra(EXTRA_IS_FROM_APK_FILE, isFromApkFile)
+                if (app.splitFiles.isNotEmpty()) {
+                    putStringArrayListExtra(EXTRA_SPLIT_NAMES, ArrayList(app.splitFiles.map { it.splitName }))
+                    putStringArrayListExtra(EXTRA_SPLIT_PATHS, ArrayList(app.splitFiles.map { it.path }))
+                    putExtra(EXTRA_SPLIT_SIZES, app.splitFiles.map { it.sizeBytes }.toLongArray())
+                }
             }
         }
     }

@@ -14,9 +14,21 @@ data class ClonedApkRecord(
     val originalAppName: String,
     val apkPath: String,
     val apkSizeBytes: Long,
-    val createdAtMillis: Long
+    val createdAtMillis: Long,
+    val splitApkPaths: List<String> = emptyList(),
+    val sourceVersionCode: Long = 0L
 ) {
     val apkFile: File get() = File(apkPath)
+
+    /** Semua berkas APK hasil clone (1 berkas untuk APK tunggal; base + semua split untuk Split APK). */
+    val allApkFiles: List<File>
+        get() = buildList(1 + splitApkPaths.size) {
+            add(apkFile)
+            splitApkPaths.forEach { add(File(it)) }
+        }
+
+    val isSplitClone: Boolean get() = splitApkPaths.isNotEmpty()
+    val totalFileCount: Int get() = 1 + splitApkPaths.size
 
     fun toJsonString(): String {
         return buildString {
@@ -28,14 +40,22 @@ data class ClonedApkRecord(
             append("\"originalAppName\":").append(quote(originalAppName)).append(',')
             append("\"apkPath\":").append(quote(apkPath)).append(',')
             append("\"apkSizeBytes\":").append(apkSizeBytes).append(',')
-            append("\"createdAtMillis\":").append(createdAtMillis)
-            append('}')
+            append("\"createdAtMillis\":").append(createdAtMillis).append(',')
+            append("\"sourceVersionCode\":").append(sourceVersionCode).append(',')
+            append("\"splitApkPaths\":[")
+            splitApkPaths.forEachIndexed { idx, path ->
+                if (idx > 0) append(',')
+                append(quote(path))
+            }
+            append("]}")
         }
     }
 
     companion object {
         private val STRING_FIELD = Regex("\"([^\"]+)\"\\s*:\\s*\"((?:\\\\.|[^\"\\\\])*)\"")
         private val NUMBER_FIELD = Regex("\"([^\"]+)\"\\s*:\\s*(-?\\d+)")
+        private val SPLIT_ARRAY_FIELD = Regex("\"splitApkPaths\"\\s*:\\s*\\[([^\\]]*)\\]")
+        private val QUOTED_ITEM = Regex("\"((?:\\\\.|[^\"\\\\])*)\"")
 
         fun fromJsonString(raw: String): ClonedApkRecord? {
             val strings = mutableMapOf<String, String>()
@@ -46,6 +66,13 @@ data class ClonedApkRecord(
             NUMBER_FIELD.findAll(raw).forEach { m ->
                 numbers[m.groupValues[1]] = m.groupValues[2].toLongOrNull() ?: 0L
             }
+            val splitPaths = SPLIT_ARRAY_FIELD.find(raw)?.let { match ->
+                QUOTED_ITEM.findAll(match.groupValues[1])
+                    .map { unescape(it.groupValues[1]) }
+                    .filter { it.isNotBlank() }
+                    .toList()
+            } ?: emptyList()
+
             val id = strings["id"] ?: return null
             val cloneName = strings["cloneName"] ?: return null
             val clonePkg = strings["clonePackageName"] ?: return null
@@ -54,6 +81,7 @@ data class ClonedApkRecord(
             val apkPath = strings["apkPath"] ?: return null
             val apkSize = numbers["apkSizeBytes"] ?: 0L
             val createdAt = numbers["createdAtMillis"] ?: 0L
+            val sourceVersion = numbers["sourceVersionCode"] ?: 0L
             return ClonedApkRecord(
                 id = id,
                 cloneName = cloneName,
@@ -62,7 +90,9 @@ data class ClonedApkRecord(
                 originalAppName = origName,
                 apkPath = apkPath,
                 apkSizeBytes = apkSize,
-                createdAtMillis = createdAt
+                createdAtMillis = createdAt,
+                splitApkPaths = splitPaths,
+                sourceVersionCode = sourceVersion
             )
         }
 

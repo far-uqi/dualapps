@@ -218,10 +218,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun onAppSelected(app: InstalledApp) {
-        if (app.isSplitApk) {
-            Toast.makeText(this, CloneError.SPLIT_UNSUPPORTED.userMessage, Toast.LENGTH_LONG).show()
-            return
-        }
         startActivity(ConfigureCloneActivity.createIntent(this, app))
     }
 

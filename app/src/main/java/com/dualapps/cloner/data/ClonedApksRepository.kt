@@ -26,15 +26,21 @@ class ClonedApksRepository(private val filesDir: File) {
                     ClonedApkRecord.fromJsonString(metaFile.readText(Charsets.UTF_8))
                 }.getOrNull()
             }
-            .filter { record -> record.apkFile.exists() && record.apkFile.isFile }
+            .filter { record -> record.allApkFiles.all { it.exists() && it.isFile } }
             .sortedByDescending { it.createdAtMillis }
     }
 
     fun delete(record: ClonedApkRecord): Boolean {
-        val apkDeleted = !record.apkFile.exists() || record.apkFile.delete()
+        val allApksDeleted = record.allApkFiles.all { file -> !file.exists() || file.delete() }
+        if (record.isSplitClone) {
+            val splitDir = File(clonedApksDir, record.id)
+            if (splitDir.exists() && splitDir.isDirectory) {
+                splitDir.deleteRecursively()
+            }
+        }
         val metaFile = File(clonedApksDir, "${record.id}.json")
         val metaDeleted = !metaFile.exists() || metaFile.delete()
-        return apkDeleted && metaDeleted
+        return allApksDeleted && metaDeleted
     }
 
     companion object {

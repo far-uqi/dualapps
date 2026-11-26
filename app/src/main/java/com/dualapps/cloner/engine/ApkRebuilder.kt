@@ -22,7 +22,8 @@ object ApkRebuilder {
         oldPackage: String,
         newPackage: String,
         onStep: (stepName: String) -> Unit = {},
-        checkCancelled: () -> Unit = {}
+        checkCancelled: () -> Unit = {},
+        requireArsc: Boolean = true
     ) {
         if (!sourceApk.exists() || !sourceApk.canRead()) {
             throw CloneException(CloneError.SOURCE_UNREADABLE)
@@ -86,7 +87,7 @@ object ApkRebuilder {
                         "AndroidManifest.xml tidak ditemukan di dalam APK sumber."
                     )
                 }
-                if (!arscPatched) {
+                if (requireArsc && !arscPatched) {
                     throw CloneException(
                         CloneError.ARSC_PATCH_FAILED,
                         "resources.arsc tidak ditemukan di dalam APK sumber."

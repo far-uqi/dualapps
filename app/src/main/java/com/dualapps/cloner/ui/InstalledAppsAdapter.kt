@@ -61,8 +61,17 @@ class InstalledAppsAdapter(
                 binding.ivAppIcon.setImageResource(R.mipmap.ic_launcher)
             }
 
-            binding.tvSplitBadge.visibility = if (app.isSplitApk) View.VISIBLE else View.GONE
-            binding.root.alpha = if (app.isSplitApk) 0.85f else 1.0f
+            if (app.isSplitApk) {
+                binding.tvSplitBadge.visibility = View.VISIBLE
+                binding.tvSplitBadge.text = binding.root.context.getString(
+                    R.string.badge_split_info_format,
+                    app.totalFileCount,
+                    FormatUtils.formatFileSize(app.apkSizeBytes)
+                )
+            } else {
+                binding.tvSplitBadge.visibility = View.GONE
+            }
+            binding.root.alpha = 1.0f
 
             binding.root.setOnClickListener { onAppClick(app) }
         }

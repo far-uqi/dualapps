@@ -15,6 +15,7 @@ import com.dualapps.cloner.databinding.ActivityResultsBinding
 import com.dualapps.cloner.databinding.DialogConfirmDeleteBinding
 import com.dualapps.cloner.model.ClonedApkRecord
 import com.dualapps.cloner.util.ApkInstaller
+import com.dualapps.cloner.util.SplitApkInstaller
 
 class ResultsActivity : AppCompatActivity() {
 
@@ -62,11 +63,19 @@ class ResultsActivity : AppCompatActivity() {
     }
 
     private fun installRecord(record: ClonedApkRecord) {
-        ApkInstaller.installApk(this, record.apkFile)
+        if (record.isSplitClone) {
+            SplitApkInstaller.installSplitClone(this, record)
+        } else {
+            ApkInstaller.installApk(this, record.apkFile)
+        }
     }
 
     private fun shareRecord(record: ClonedApkRecord) {
-        ApkInstaller.shareApk(this, record.apkFile, record.cloneName)
+        if (record.isSplitClone) {
+            SplitApkInstaller.shareSplitApks(this, record)
+        } else {
+            ApkInstaller.shareApk(this, record.apkFile, record.cloneName)
+        }
     }
 
     private fun confirmDeleteRecord(record: ClonedApkRecord) {

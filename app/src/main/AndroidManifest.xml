@@ -43,6 +43,10 @@
             android:name=".ui.PlayProtectGuideActivity"
             android:exported="false" />
 
+        <receiver
+            android:name=".util.SplitInstallResultReceiver"
+            android:exported="false" />
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"

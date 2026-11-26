@@ -21,6 +21,12 @@
     <string name="sort_za">Z–A</string>
     <string name="sort_size">Ukuran</string>
     <string name="badge_split_unsupported">Split — belum didukung</string>
+    <string name="badge_split_info_format">Split • %1$d file • %2$s</string>
+    <string name="label_split_files_header">Daftar Berkas Split (%1$d file • %2$s)</string>
+    <string name="progress_file_format">File %1$d/%2$d • %3$s</string>
+    <string name="label_split_apk_size_format">Total (%1$d file): %2$s</string>
+    <string name="result_size_split_format">%1$s • %2$d file</string>
+    <string name="err_split_session_start">Gagal memulai sesi pemasangan Split APK: %1$s</string>
     <string name="msg_coming_soon">Segera hadir</string>
     <string name="msg_results_phase_note">Daftar hasil clone akan aktif di fase berikutnya.</string>
     <string name="msg_configure_phase_note">Aplikasi terpilih: %1$s (%2$s). Layar Atur Clone dilanjutkan di fase berikutnya.</string>

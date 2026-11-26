@@ -21,9 +21,11 @@ import com.dualapps.cloner.engine.DeviceKeystoreManager
 import com.dualapps.cloner.model.CloneError
 import com.dualapps.cloner.model.CloneException
 import com.dualapps.cloner.model.ClonedApkRecord
+import com.dualapps.cloner.model.SplitApkFile
 import com.dualapps.cloner.util.ApkInstaller
 import com.dualapps.cloner.util.FormatUtils
 import com.dualapps.cloner.util.IconProcessor
+import com.dualapps.cloner.util.SplitApkInstaller
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -60,13 +62,16 @@ class CloneProgressActivity : AppCompatActivity() {
         }
 
         customIconPath = intent.getStringExtra(EXTRA_CUSTOM_ICON_PATH)
+        val splitFiles = readSplitFilesFromIntent()
         request = CloneRequest(
             sourceApkPath = sourceDir,
             isSplitApk = intent.getBooleanExtra(EXTRA_IS_SPLIT, false),
             originalAppName = intent.getStringExtra(EXTRA_ORIGINAL_NAME).orEmpty(),
             originalPackageName = originalPkg,
             cloneName = intent.getStringExtra(EXTRA_CLONE_NAME).orEmpty(),
-            clonePackageName = clonePkg
+            clonePackageName = clonePkg,
+            splitApkPaths = splitFiles,
+            sourceVersionCode = intent.getLongExtra(EXTRA_VERSION_CODE, 0L)
         )
 
         setupUi()
@@ -110,7 +115,11 @@ class CloneProgressActivity : AppCompatActivity() {
         }
         binding.btnInstall.setOnClickListener {
             val record = completedRecord ?: return@setOnClickListener
-            ApkInstaller.installApk(this, record.apkFile)
+            if (record.isSplitClone) {
+                SplitApkInstaller.installSplitClone(this, record)
+            } else {
+                ApkInstaller.installApk(this, record.apkFile)
+            }
         }
 
         buildStepRows()
@@ -137,6 +146,7 @@ class CloneProgressActivity : AppCompatActivity() {
         binding.progressBar.max = CloneStep.entries.size
         binding.progressBar.progress = 0
         binding.tvProgressCount.text = getString(R.string.progress_count_format, 0, CloneStep.entries.size)
+        binding.tvFileProgress.visibility = View.GONE
         binding.cardError.visibility = View.GONE
         binding.cardSuccessFolder.visibility = View.GONE
         binding.btnInstall.visibility = View.GONE
@@ -186,6 +196,19 @@ class CloneProgressActivity : AppCompatActivity() {
                                 CloneStep.entries.size
                             )
                         }
+                    },
+                    onFileProgress = { fileIdx, totalFiles, fileName ->
+                        if (totalFiles > 1) {
+                            runOnUiThread {
+                                binding.tvFileProgress.visibility = View.VISIBLE
+                                binding.tvFileProgress.text = getString(
+                                    R.string.progress_file_format,
+                                    fileIdx,
+                                    totalFiles,
+                                    fileName
+                                )
+                            }
+                        }
                     }
                 )
                 onCloneSuccess(record)
@@ -221,10 +244,19 @@ class CloneProgressActivity : AppCompatActivity() {
         binding.cardSuccessFolder.visibility = View.VISIBLE
         binding.tvSuccessName.text = record.cloneName
         binding.tvSuccessPackage.text = record.clonePackageName
-        binding.tvSuccessSize.text = getString(
-            R.string.label_apk_size_format,
-            FormatUtils.formatFileSize(record.apkSizeBytes)
-        )
+        binding.tvSuccessSize.text = if (record.isSplitClone) {
+            getString(
+                R.string.label_split_apk_size_format,
+                record.totalFileCount,
+                FormatUtils.formatFileSize(record.apkSizeBytes)
+            )
+        } else {
+            getString(
+                R.string.label_apk_size_format,
+                FormatUtils.formatFileSize(record.apkSizeBytes)
+            )
+        }
+        binding.tvFileProgress.visibility = View.GONE
         binding.btnInstall.visibility = View.VISIBLE
     }
 
@@ -293,6 +325,20 @@ class CloneProgressActivity : AppCompatActivity() {
         }.getOrDefault(false)
     }
 
+    private fun readSplitFilesFromIntent(): List<SplitApkFile> {
+        val names = intent.getStringArrayListExtra(EXTRA_SPLIT_NAMES) ?: return emptyList()
+        val paths = intent.getStringArrayListExtra(EXTRA_SPLIT_PATHS) ?: return emptyList()
+        val sizes = intent.getLongArrayExtra(EXTRA_SPLIT_SIZES) ?: LongArray(0)
+        val count = minOf(names.size, paths.size)
+        return (0 until count).map { i ->
+            SplitApkFile(
+                splitName = names[i],
+                path = paths[i],
+                sizeBytes = sizes.getOrElse(i) { 0L }
+            )
+        }
+    }
+
     companion object {
         private const val EXTRA_SOURCE_DIR = "extra_source_dir"
         private const val EXTRA_IS_SPLIT = "extra_is_split"
@@ -301,6 +347,10 @@ class CloneProgressActivity : AppCompatActivity() {
         private const val EXTRA_CLONE_NAME = "extra_clone_name"
         private const val EXTRA_CLONE_PACKAGE = "extra_clone_package"
         private const val EXTRA_CUSTOM_ICON_PATH = "extra_custom_icon_path"
+        private const val EXTRA_VERSION_CODE = "extra_version_code"
+        private const val EXTRA_SPLIT_NAMES = "extra_split_names"
+        private const val EXTRA_SPLIT_PATHS = "extra_split_paths"
+        private const val EXTRA_SPLIT_SIZES = "extra_split_sizes"
         private const val STATE_COMPLETED_RECORD_JSON = "state_completed_record_json"
 
         fun createIntent(
@@ -311,7 +361,9 @@ class CloneProgressActivity : AppCompatActivity() {
             originalPackageName: String,
             cloneName: String,
             clonePackageName: String,
-            customIconPath: String? = null
+            customIconPath: String? = null,
+            splitFiles: List<SplitApkFile> = emptyList(),
+            sourceVersionCode: Long = 0L
         ): Intent {
             return Intent(context, CloneProgressActivity::class.java).apply {
                 putExtra(EXTRA_SOURCE_DIR, sourceDir)
@@ -320,8 +372,14 @@ class CloneProgressActivity : AppCompatActivity() {
                 putExtra(EXTRA_ORIGINAL_PACKAGE, originalPackageName)
                 putExtra(EXTRA_CLONE_NAME, cloneName)
                 putExtra(EXTRA_CLONE_PACKAGE, clonePackageName)
+                putExtra(EXTRA_VERSION_CODE, sourceVersionCode)
                 if (!customIconPath.isNullOrBlank()) {
                     putExtra(EXTRA_CUSTOM_ICON_PATH, customIconPath)
+                }
+                if (splitFiles.isNotEmpty()) {
+                    putStringArrayListExtra(EXTRA_SPLIT_NAMES, ArrayList(splitFiles.map { it.splitName }))
+                    putStringArrayListExtra(EXTRA_SPLIT_PATHS, ArrayList(splitFiles.map { it.path }))
+                    putExtra(EXTRA_SPLIT_SIZES, splitFiles.map { it.sizeBytes }.toLongArray())
                 }
             }
         }

@@ -31,6 +31,18 @@ object CloneIdentityPatcher {
         val labelPatched: Boolean,
         val replacedIconEntries: List<String>,
         val retargetedIconEntries: List<String> = emptyList()
+    ) {
+        val totalIconChanges: Int get() = replacedIconEntries.size + retargetedIconEntries.size
+    }
+
+    /**
+     * Konteks resource dari `base.apk` yang dibawa saat mem-patch berkas split APK
+     * (mis. `split_config.xxhdpi.apk` atau `split_config.in.apk`).
+     */
+    data class BaseIdentityContext(
+        val iconResIds: List<Int>,
+        val adaptiveForegroundResIds: List<Int>,
+        val labelResId: Int?
     )
 
     private data class VectorRetargetPlan(
@@ -40,12 +52,64 @@ object CloneIdentityPatcher {
         val isAdaptiveForeground: Boolean
     )
 
+    fun extractBaseIdentityContext(baseApk: File): BaseIdentityContext {
+        ZipFile(baseApk).use { zip ->
+            val manifestEntry = zip.getEntry("AndroidManifest.xml") ?: return BaseIdentityContext(
+                iconResIds = emptyList(),
+                adaptiveForegroundResIds = emptyList(),
+                labelResId = null
+            )
+            val manifestBytes = zip.getInputStream(manifestEntry).use { it.readBytes() }
+            val arscEntry = zip.getEntry("resources.arsc")
+            val arscBytes = arscEntry?.let { zip.getInputStream(it).use { s -> s.readBytes() } }
+
+            val labelResId = (runCatching { AxmlPatcher.readApplicationLabel(manifestBytes) }.getOrNull()
+                as? AxmlPatcher.LabelTarget.ResourceRef)?.resId
+            val iconRefs = runCatching { AxmlPatcher.readApplicationIconRefs(manifestBytes) }
+                .getOrDefault(emptyList())
+
+            val adaptiveXmlPaths = LinkedHashSet<String>()
+            val entryNames = zip.entries().toList().filterNot { it.isDirectory }.mapTo(LinkedHashSet()) { it.name }
+            for (name in entryNames) {
+                val lower = name.lowercase()
+                if (lower.startsWith("res/mipmap-anydpi") &&
+                    lower.endsWith(".xml") &&
+                    lower.substringAfterLast('/').startsWith("ic_launcher")
+                ) {
+                    adaptiveXmlPaths.add(name)
+                }
+            }
+            if (arscBytes != null) {
+                for (refId in iconRefs) {
+                    val paths = runCatching { ArscPatcher.readStringResourceValues(arscBytes, refId) }
+                        .getOrDefault(emptyList())
+                    paths.filter { it in entryNames && it.lowercase().endsWith(".xml") }
+                        .forEach { adaptiveXmlPaths.add(it) }
+                }
+            }
+
+            val fgRefs = LinkedHashSet<Int>()
+            for (xmlPath in adaptiveXmlPaths) {
+                val xmlEntry = zip.getEntry(xmlPath) ?: continue
+                val xmlBytes = zip.getInputStream(xmlEntry).use { it.readBytes() }
+                AxmlPatcher.readAdaptiveIconForegroundRef(xmlBytes)?.let { fgRefs.add(it) }
+            }
+
+            return BaseIdentityContext(
+                iconResIds = iconRefs,
+                adaptiveForegroundResIds = fgRefs.toList(),
+                labelResId = labelResId
+            )
+        }
+    }
+
     fun applyIdentity(
         inputApk: File,
         outputApk: File,
         newLabel: String?,
         customIconPngs: Map<String, ByteArray>?,
-        checkCancelled: () -> Unit = {}
+        checkCancelled: () -> Unit = {},
+        failIfNoIconsFound: Boolean = true
     ): IdentityPatchResult {
         val shouldPatchLabel = !newLabel.isNullOrBlank()
         val shouldPatchIcon = !customIconPngs.isNullOrEmpty()
@@ -105,7 +169,7 @@ object CloneIdentityPatcher {
                         outTargetPngEntries = targetPngEntries,
                         outRetargetPlans = retargetPlans
                     )
-                    if (targetPngEntries.isEmpty() && retargetPlans.isEmpty()) {
+                    if (failIfNoIconsFound && targetPngEntries.isEmpty() && retargetPlans.isEmpty()) {
                         throw CloneException(
                             CloneError.ICON_PATCH_FAILED,
                             "Tidak ditemukan entri ikon launcher (PNG maupun vector XML yang dapat di-retarget) di APK."
@@ -193,6 +257,187 @@ object CloneIdentityPatcher {
                 CloneError.LABEL_PATCH_FAILED
             }
             throw CloneException(error, "Gagal menerapkan identitas clone: ${e.message}", e)
+        }
+    }
+
+    /**
+     * Menerapkan identitas clone (ikon custom &/atau override `@string` label) pada satu berkas split APK
+     * (mis. `split_config.xxhdpi.apk` atau `split_config.in.apk`) berdasarkan [baseContext] dari `base.apk`.
+     * Berkas split tanpa `resources.arsc` (mis. `config.arm64_v8a`) disalin utuh tanpa perubahan.
+     */
+    fun applyIdentityToSplitApk(
+        splitApk: File,
+        outputApk: File,
+        baseContext: BaseIdentityContext,
+        newLabel: String?,
+        customIconPngs: Map<String, ByteArray>?,
+        checkCancelled: () -> Unit = {}
+    ): IdentityPatchResult {
+        val shouldCheckLabel = !newLabel.isNullOrBlank() && baseContext.labelResId != null
+        val shouldCheckIcon = !customIconPngs.isNullOrEmpty()
+
+        if (!shouldCheckLabel && !shouldCheckIcon) {
+            splitApk.copyTo(outputApk, overwrite = true)
+            return IdentityPatchResult(labelPatched = false, replacedIconEntries = emptyList())
+        }
+
+        outputApk.parentFile?.mkdirs()
+
+        try {
+            ZipFile(splitApk).use { zip ->
+                val arscEntry = zip.getEntry("resources.arsc")
+                if (arscEntry == null) {
+                    // Split ABI murni (tanpa resources.arsc): tidak membawa resource ikon/label
+                    splitApk.copyTo(outputApk, overwrite = true)
+                    return IdentityPatchResult(labelPatched = false, replacedIconEntries = emptyList())
+                }
+
+                val entries = zip.entries().toList()
+                val entryNames = entries.filterNot { it.isDirectory }.mapTo(LinkedHashSet()) { it.name }
+                var arscBytes = zip.getInputStream(arscEntry).use { it.readBytes() }
+                var arscModified = false
+                var labelPatched = false
+
+                // 1. Jika split bahasa ini ikut mendefinisikan resource ID app_name dari base, patch juga
+                if (shouldCheckLabel) {
+                    checkCancelled()
+                    val labelResId = baseContext.labelResId!!
+                    val existingVals = runCatching {
+                        ArscPatcher.readStringResourceValues(arscBytes, labelResId)
+                    }.getOrDefault(emptyList())
+                    if (existingVals.isNotEmpty()) {
+                        arscBytes = ArscPatcher.patchStringResource(arscBytes, labelResId, newLabel!!)
+                        arscModified = true
+                        labelPatched = true
+                    }
+                }
+
+                // 2. Temukan entri ikon di split ini (berdasarkan nama standar + resolusi resource ID dari base)
+                val targetPngEntries = LinkedHashSet<String>()
+                val retargetPlans = mutableListOf<VectorRetargetPlan>()
+                if (shouldCheckIcon) {
+                    checkCancelled()
+                    val reservedPaths = LinkedHashSet<String>(entryNames)
+                    val retargetedResIds = LinkedHashSet<Int>()
+
+                    for (name in entryNames) {
+                        if (isStandardLauncherPng(name)) {
+                            targetPngEntries.add(name)
+                        }
+                    }
+
+                    // Resolusi foreground adaptive icon dari base (mis. 0x7f0800a7 di split_config.xxhdpi.apk)
+                    for (fgRef in baseContext.adaptiveForegroundResIds) {
+                        val fgPaths = runCatching {
+                            ArscPatcher.readStringResourceValues(arscBytes, fgRef)
+                        }.getOrDefault(emptyList())
+                        val pngPaths = fgPaths.filter { it in entryNames && it.lowercase().endsWith(".png") }
+                        val xmlPaths = fgPaths.filter { it in entryNames && it.lowercase().endsWith(".xml") }
+                        if (pngPaths.isNotEmpty()) {
+                            targetPngEntries.addAll(pngPaths)
+                        } else if (xmlPaths.isNotEmpty() && retargetedResIds.add(fgRef)) {
+                            val newPath = allocateUniquePngPath(
+                                preferred = "res/drawable/ic_launcher_foreground.png",
+                                fallbackPrefix = "res/drawable/dualapps_fg_${fgRef.toString(16)}",
+                                reserved = reservedPaths
+                            )
+                            retargetPlans.add(
+                                VectorRetargetPlan(
+                                    resId = fgRef,
+                                    oldXmlPaths = xmlPaths.toSet(),
+                                    newPngPath = newPath,
+                                    isAdaptiveForeground = true
+                                )
+                            )
+                        }
+                    }
+
+                    // Resolusi langsung android:icon / android:roundIcon dari base di ARSC split ini
+                    for (iconRef in baseContext.iconResIds) {
+                        val paths = runCatching {
+                            ArscPatcher.readStringResourceValues(arscBytes, iconRef)
+                        }.getOrDefault(emptyList())
+                        val pngPaths = paths.filter {
+                            it in entryNames && it.lowercase().endsWith(".png") && !it.lowercase().contains("background")
+                        }
+                        if (pngPaths.isNotEmpty()) {
+                            targetPngEntries.addAll(pngPaths)
+                        }
+                    }
+
+                    for (plan in retargetPlans) {
+                        checkCancelled()
+                        arscBytes = ArscPatcher.retargetFileResource(arscBytes, plan.resId, plan.newPngPath)
+                        arscModified = true
+                    }
+                }
+
+                if (!arscModified && targetPngEntries.isEmpty() && retargetPlans.isEmpty()) {
+                    splitApk.copyTo(outputApk, overwrite = true)
+                    return IdentityPatchResult(labelPatched = false, replacedIconEntries = emptyList())
+                }
+
+                val removedXmlEntries = retargetPlans.flatMapTo(LinkedHashSet()) { it.oldXmlPaths }
+                val newPngEntries = LinkedHashMap<String, ByteArray>()
+                for (plan in retargetPlans) {
+                    newPngEntries[plan.newPngPath] = selectPngForRetarget(customIconPngs!!, plan.isAdaptiveForeground)
+                }
+
+                val replacedIcons = mutableListOf<String>()
+                val retargetedIcons = mutableListOf<String>()
+                AlignedZipWriter(outputApk).use { writer ->
+                    for (entry in entries) {
+                        checkCancelled()
+                        if (entry.isDirectory) continue
+                        val name = entry.name
+                        if (name in removedXmlEntries) continue
+
+                        when {
+                            name == "resources.arsc" && arscModified -> {
+                                writer.writeStoredEntry(name, arscBytes, AlignedZipWriter.ALIGN_DEFAULT)
+                            }
+                            name in targetPngEntries -> {
+                                val pngBytes = selectPngForPath(customIconPngs!!, name)
+                                if (entry.method == ZipEntry.STORED) {
+                                    writer.writeStoredEntry(name, pngBytes, AlignedZipWriter.alignmentForStored(name))
+                                } else {
+                                    writer.writeDeflatedEntry(name, pngBytes)
+                                }
+                                replacedIcons.add(name)
+                            }
+                            else -> {
+                                val rawBytes = zip.getInputStream(entry).use { it.readBytes() }
+                                if (entry.method == ZipEntry.STORED) {
+                                    writer.writeStoredEntry(name, rawBytes, AlignedZipWriter.alignmentForStored(name))
+                                } else {
+                                    writer.writeDeflatedEntry(name, rawBytes)
+                                }
+                            }
+                        }
+                    }
+                    for ((newPath, pngBytes) in newPngEntries) {
+                        checkCancelled()
+                        writer.writeStoredEntry(newPath, pngBytes, AlignedZipWriter.ALIGN_DEFAULT)
+                        retargetedIcons.add(newPath)
+                    }
+                }
+
+                return IdentityPatchResult(
+                    labelPatched = labelPatched,
+                    replacedIconEntries = replacedIcons,
+                    retargetedIconEntries = retargetedIcons
+                )
+            }
+        } catch (e: CloneException) {
+            outputApk.delete()
+            throw e
+        } catch (e: Exception) {
+            outputApk.delete()
+            throw CloneException(
+                CloneError.SPLIT_PATCH_FAILED,
+                "Gagal menerapkan identitas pada split '${splitApk.name}': ${e.message}",
+                e
+            )
         }
     }
 

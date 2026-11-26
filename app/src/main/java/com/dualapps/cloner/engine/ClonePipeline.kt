@@ -5,6 +5,7 @@ import android.os.Build
 import com.dualapps.cloner.model.CloneError
 import com.dualapps.cloner.model.CloneException
 import com.dualapps.cloner.model.ClonedApkRecord
+import com.dualapps.cloner.model.SplitApkFile
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
@@ -55,11 +56,13 @@ data class CloneRequest(
     val originalPackageName: String,
     val cloneName: String,
     val clonePackageName: String,
-    val customIconPngs: Map<String, ByteArray>? = null
+    val customIconPngs: Map<String, ByteArray>? = null,
+    val splitApkPaths: List<SplitApkFile> = emptyList(),
+    val sourceVersionCode: Long = 0L
 )
 
 /**
- * Pipeline mesin clone lengkap (Bagian 3 langkah 1–7).
+ * Pipeline mesin clone lengkap (APK tunggal v1.0 & Split APK multi-file Fase 10).
  * Bekerja pada salinan APK sumber di `cacheDir/clone_work/<uuid>/`,
  * dan hanya menyimpan hasil akhir setelah seluruh langkah verifikasi lolos.
  */
@@ -73,12 +76,14 @@ class ClonePipeline(
     suspend fun execute(
         request: CloneRequest,
         onStepStart: (CloneStep) -> Unit = {},
-        onStepDone: (CloneStep) -> Unit = {}
+        onStepDone: (CloneStep) -> Unit = {},
+        onFileProgress: (fileIndex: Int, totalFiles: Int, fileName: String) -> Unit = { _, _, _ -> }
     ): ClonedApkRecord = withContext(Dispatchers.IO) {
         val workId = UUID.randomUUID().toString()
         val workDir = File(File(cacheDir, "clone_work"), workId)
         val outputDir = File(filesDir, "cloned_apks")
         var activeStep = CloneStep.VALIDATE_SOURCE
+        var finalOutputCleanupTarget: File? = null
 
         suspend fun checkCancelled() {
             try {
@@ -88,13 +93,22 @@ class ClonePipeline(
             }
         }
 
+        val threadCancelCheck: () -> Unit = {
+            if (Thread.currentThread().isInterrupted) {
+                throw CloneException(CloneError.CANCELLED)
+            }
+        }
+
         try {
-            // Langkah 1: Validasi awal & salin APK sumber
+            val isMultiSplit = request.splitApkPaths.isNotEmpty()
+            val totalFiles = if (isMultiSplit) 1 + request.splitApkPaths.size else 1
+
+            // Langkah 1: Validasi awal & salin APK sumber (base + seluruh split bila multi-APK)
             activeStep = CloneStep.VALIDATE_SOURCE
             onStepStart(activeStep)
             checkCancelled()
 
-            if (request.isSplitApk) {
+            if (request.isSplitApk && !isMultiSplit) {
                 throw CloneException(CloneError.SPLIT_UNSUPPORTED)
             }
             if (request.clonePackageName.length > ArscPatcher.MAX_PACKAGE_NAME_LENGTH) {
@@ -108,33 +122,57 @@ class ClonePipeline(
             if (!sourceFile.exists() || !sourceFile.canRead()) {
                 throw CloneException(CloneError.SOURCE_UNREADABLE)
             }
+            if (isMultiSplit) {
+                for (split in request.splitApkPaths) {
+                    val f = File(split.path)
+                    if (!f.exists() || !f.canRead()) {
+                        throw CloneException(
+                            CloneError.SOURCE_UNREADABLE,
+                            "Berkas split '${split.splitName}' tidak dapat dibaca."
+                        )
+                    }
+                }
+            }
 
             if (!workDir.mkdirs()) {
                 throw CloneException(CloneError.ZIP_WRITE_FAILED, "Gagal membuat folder kerja clone.")
             }
-            val copiedSource = File(workDir, "source.apk")
-            sourceFile.copyTo(copiedSource, overwrite = true)
+
+            onFileProgress(1, totalFiles, "base.apk")
+            val copiedBase = File(workDir, "src_base.apk")
+            sourceFile.copyTo(copiedBase, overwrite = true)
+
+            val copiedSplits = mutableListOf<Pair<String, File>>()
+            if (isMultiSplit) {
+                request.splitApkPaths.forEachIndexed { idx, split ->
+                    checkCancelled()
+                    val safeName = sanitizeSplitFileName(split.splitName, idx)
+                    onFileProgress(idx + 2, totalFiles, safeName)
+                    val dest = File(workDir, "src_$safeName")
+                    File(split.path).copyTo(dest, overwrite = true)
+                    copiedSplits.add(safeName to dest)
+                }
+            }
             onStepDone(activeStep)
 
-            // Langkah 2–5: Patch AXML + ARSC + salin DEX utuh + bangun ulang APK ter-align
-            val unsignedApk = File(workDir, "unsigned.apk")
+            // Langkah 2–4: Patch AXML + ARSC + salin DEX utuh + bangun ulang APK ter-align
+            val unsignedBase = File(workDir, "unsigned_base.apk")
             var manifestStarted = false
             var arscStarted = false
 
             activeStep = CloneStep.PATCH_MANIFEST
             onStepStart(activeStep)
             checkCancelled()
+            onFileProgress(1, totalFiles, "base.apk")
 
             ApkRebuilder.rebuild(
-                sourceApk = copiedSource,
-                outputUnsignedApk = unsignedApk,
+                sourceApk = copiedBase,
+                outputUnsignedApk = unsignedBase,
                 oldPackage = request.originalPackageName,
                 newPackage = request.clonePackageName,
                 onStep = { stepLabel ->
                     when (stepLabel) {
-                        "Patch AndroidManifest.xml" -> {
-                            manifestStarted = true
-                        }
+                        "Patch AndroidManifest.xml" -> manifestStarted = true
                         "Patch resources.arsc" -> {
                             if (manifestStarted) onStepDone(CloneStep.PATCH_MANIFEST)
                             activeStep = CloneStep.PATCH_ARSC
@@ -143,13 +181,41 @@ class ClonePipeline(
                         }
                     }
                 },
-                checkCancelled = {
-                    if (Thread.currentThread().isInterrupted) {
-                        throw CloneException(CloneError.CANCELLED)
-                    }
-                }
+                checkCancelled = threadCancelCheck,
+                requireArsc = true
             )
             checkCancelled()
+
+            val unsignedSplits = mutableListOf<Pair<String, File>>()
+            if (isMultiSplit) {
+                copiedSplits.forEachIndexed { idx, (safeName, srcSplit) ->
+                    checkCancelled()
+                    onFileProgress(idx + 2, totalFiles, safeName)
+                    val outUnsigned = File(workDir, "unsigned_$safeName")
+                    try {
+                        // Semua split WAJIB patch AXML; ARSC dipatch bila ada (requireArsc = false untuk split ABI murni)
+                        ApkRebuilder.rebuild(
+                            sourceApk = srcSplit,
+                            outputUnsignedApk = outUnsigned,
+                            oldPackage = request.originalPackageName,
+                            newPackage = request.clonePackageName,
+                            checkCancelled = threadCancelCheck,
+                            requireArsc = false
+                        )
+                    } catch (e: CloneException) {
+                        if (e.error == CloneError.CANCELLED || e.error == CloneError.PACKAGE_TOO_LONG) {
+                            throw e
+                        }
+                        throw CloneException(
+                            CloneError.SPLIT_PATCH_FAILED,
+                            "Gagal memproses split '$safeName': ${e.message}",
+                            e
+                        )
+                    }
+                    unsignedSplits.add(safeName to outUnsigned)
+                }
+            }
+
             if (arscStarted) {
                 onStepDone(CloneStep.PATCH_ARSC)
             } else {
@@ -161,56 +227,128 @@ class ClonePipeline(
             onStepStart(CloneStep.REBUILD_APK)
             onStepDone(CloneStep.REBUILD_APK)
 
-            // Langkah 5b (Fase 5): Terapkan identitas (nama launcher &/atau ikon custom) bila diminta
+            // Langkah 5: Terapkan identitas (nama launcher &/atau ikon custom) bila diminta
             val needsLabelPatch = request.cloneName.isNotBlank() &&
                 request.cloneName.trim() != request.originalAppName.trim()
             val needsIconPatch = !request.customIconPngs.isNullOrEmpty()
-            val apkReadyForSigning = if (needsLabelPatch || needsIconPatch) {
+
+            val baseReadyForSigning: File
+            val splitsReadyForSigning: List<Pair<String, File>>
+
+            if (needsLabelPatch || needsIconPatch) {
                 activeStep = CloneStep.APPLY_IDENTITY
                 onStepStart(activeStep)
                 checkCancelled()
 
-                val identityApk = File(workDir, "identity.apk")
-                CloneIdentityPatcher.applyIdentity(
-                    inputApk = unsignedApk,
-                    outputApk = identityApk,
-                    newLabel = if (needsLabelPatch) request.cloneName.trim() else null,
-                    customIconPngs = if (needsIconPatch) request.customIconPngs else null,
-                    checkCancelled = {
-                        if (Thread.currentThread().isInterrupted) {
-                            throw CloneException(CloneError.CANCELLED)
-                        }
+                val labelArg = if (needsLabelPatch) request.cloneName.trim() else null
+                val iconArg = if (needsIconPatch) request.customIconPngs else null
+
+                if (!isMultiSplit) {
+                    onFileProgress(1, 1, "base.apk")
+                    val identityBase = File(workDir, "identity_base.apk")
+                    CloneIdentityPatcher.applyIdentity(
+                        inputApk = unsignedBase,
+                        outputApk = identityBase,
+                        newLabel = labelArg,
+                        customIconPngs = iconArg,
+                        checkCancelled = threadCancelCheck,
+                        failIfNoIconsFound = true
+                    )
+                    baseReadyForSigning = identityBase
+                    splitsReadyForSigning = emptyList()
+                } else {
+                    val baseContext = CloneIdentityPatcher.extractBaseIdentityContext(unsignedBase)
+                    onFileProgress(1, totalFiles, "base.apk")
+                    val identityBase = File(workDir, "identity_base.apk")
+                    val baseRes = CloneIdentityPatcher.applyIdentity(
+                        inputApk = unsignedBase,
+                        outputApk = identityBase,
+                        newLabel = labelArg,
+                        customIconPngs = iconArg,
+                        checkCancelled = threadCancelCheck,
+                        failIfNoIconsFound = false
+                    )
+                    var totalIconsChanged = baseRes.totalIconChanges
+
+                    val identitySplits = mutableListOf<Pair<String, File>>()
+                    unsignedSplits.forEachIndexed { idx, (safeName, splitFile) ->
+                        checkCancelled()
+                        onFileProgress(idx + 2, totalFiles, safeName)
+                        val outSplit = File(workDir, "identity_$safeName")
+                        val splitRes = CloneIdentityPatcher.applyIdentityToSplitApk(
+                            splitApk = splitFile,
+                            outputApk = outSplit,
+                            baseContext = baseContext,
+                            newLabel = labelArg,
+                            customIconPngs = iconArg,
+                            checkCancelled = threadCancelCheck
+                        )
+                        totalIconsChanged += splitRes.totalIconChanges
+                        identitySplits.add(safeName to outSplit)
                     }
-                )
+
+                    if (needsIconPatch && totalIconsChanged == 0) {
+                        throw CloneException(
+                            CloneError.ICON_PATCH_FAILED,
+                            "Tidak ditemukan entri ikon launcher yang dapat diganti di base.apk maupun seluruh berkas split."
+                        )
+                    }
+                    baseReadyForSigning = identityBase
+                    splitsReadyForSigning = identitySplits
+                }
+
                 checkCancelled()
                 onStepDone(activeStep)
-                identityApk
             } else {
-                unsignedApk
+                baseReadyForSigning = unsignedBase
+                splitsReadyForSigning = unsignedSplits
             }
 
-            // Langkah 6: Tanda tangani ulang (keystore unik per perangkat + apksig v1/v2 + ApkVerifier)
+            // Langkah 6: Tanda tangani ulang SEMUA berkas dengan keystore per-perangkat yang SAMA
             activeStep = CloneStep.SIGN_AND_VERIFY
             onStepStart(activeStep)
             checkCancelled()
 
             val signingMaterial = keystoreManager.getOrCreateSigningMaterial()
-            val signedApk = File(workDir, "signed.apk")
-            ApkSigningEngine.signAndVerify(apkReadyForSigning, signedApk, signingMaterial)
+            onFileProgress(1, totalFiles, "base.apk")
+            val signedBase = File(workDir, "signed_base.apk")
+            ApkSigningEngine.signAndVerify(baseReadyForSigning, signedBase, signingMaterial)
+
+            val signedSplits = mutableListOf<Pair<String, File>>()
+            splitsReadyForSigning.forEachIndexed { idx, (safeName, splitToSign) ->
+                checkCancelled()
+                onFileProgress(idx + 2, totalFiles, safeName)
+                val outSigned = File(workDir, "signed_$safeName")
+                ApkSigningEngine.signAndVerify(splitToSign, outSigned, signingMaterial)
+                signedSplits.add(safeName to outSigned)
+            }
             onStepDone(activeStep)
 
-            // Langkah 7: Verifikasi akhir sebelum sukses dinyatakan (getPackageArchiveInfo)
+            // Langkah 7: Verifikasi akhir sebelum sukses dinyatakan (getPackageArchiveInfo pada base + tiap split)
             activeStep = CloneStep.VERIFY_ARCHIVE
             onStepStart(activeStep)
             checkCancelled()
 
-            val archivePackage = archivePackageReader.readArchivePackageName(signedApk)
+            onFileProgress(1, totalFiles, "base.apk")
+            val archivePackage = archivePackageReader.readArchivePackageName(signedBase)
             if (archivePackage != request.clonePackageName) {
-                signedApk.delete()
+                signedBase.delete()
                 throw CloneException(
                     CloneError.VERIFY_PACKAGE_MISMATCH,
-                    "Verifikasi akhir gagal: diharapkan '${request.clonePackageName}', terbaca '$archivePackage'."
+                    "Verifikasi akhir base.apk gagal: diharapkan '${request.clonePackageName}', terbaca '$archivePackage'."
                 )
+            }
+            signedSplits.forEachIndexed { idx, (safeName, signedSplit) ->
+                checkCancelled()
+                onFileProgress(idx + 2, totalFiles, safeName)
+                val splitPkg = archivePackageReader.readArchivePackageName(signedSplit)
+                if (splitPkg != request.clonePackageName) {
+                    signedSplit.delete()
+                    throw CloneException(
+                        CloneError.VERIFY_PACKAGE_MISMATCH,
+                        "Verifikasi akhir split '$safeName' gagal: diharapkan '${request.clonePackageName}', terbaca '$splitPkg'."
+                    )
+                }
             }
             onStepDone(activeStep)
 
@@ -220,28 +358,69 @@ class ClonePipeline(
             }
             val now = System.currentTimeMillis()
             val safeFileBase = "${request.clonePackageName}_$now"
-            val finalApk = File(outputDir, "$safeFileBase.apk")
-            signedApk.copyTo(finalApk, overwrite = true)
 
-            val record = ClonedApkRecord(
-                id = safeFileBase,
-                cloneName = request.cloneName,
-                clonePackageName = request.clonePackageName,
-                originalPackageName = request.originalPackageName,
-                originalAppName = request.originalAppName,
-                apkPath = finalApk.absolutePath,
-                apkSizeBytes = finalApk.length(),
-                createdAtMillis = now
-            )
+            val record = if (!isMultiSplit) {
+                val finalApk = File(outputDir, "$safeFileBase.apk")
+                finalOutputCleanupTarget = finalApk
+                signedBase.copyTo(finalApk, overwrite = true)
+                checkCancelled()
+                ClonedApkRecord(
+                    id = safeFileBase,
+                    cloneName = request.cloneName,
+                    clonePackageName = request.clonePackageName,
+                    originalPackageName = request.originalPackageName,
+                    originalAppName = request.originalAppName,
+                    apkPath = finalApk.absolutePath,
+                    apkSizeBytes = finalApk.length(),
+                    createdAtMillis = now,
+                    splitApkPaths = emptyList(),
+                    sourceVersionCode = request.sourceVersionCode
+                )
+            } else {
+                val splitBundleDir = File(outputDir, safeFileBase)
+                finalOutputCleanupTarget = splitBundleDir
+                if (!splitBundleDir.mkdirs()) {
+                    throw CloneException(CloneError.ZIP_WRITE_FAILED, "Gagal membuat folder hasil split clone.")
+                }
+                val finalBase = File(splitBundleDir, "base.apk")
+                signedBase.copyTo(finalBase, overwrite = true)
+                var totalBytes = finalBase.length()
+
+                val finalSplitPaths = mutableListOf<String>()
+                for ((safeName, signedSplit) in signedSplits) {
+                    checkCancelled()
+                    val destSplit = File(splitBundleDir, safeName)
+                    signedSplit.copyTo(destSplit, overwrite = true)
+                    totalBytes += destSplit.length()
+                    finalSplitPaths.add(destSplit.absolutePath)
+                }
+                ClonedApkRecord(
+                    id = safeFileBase,
+                    cloneName = request.cloneName,
+                    clonePackageName = request.clonePackageName,
+                    originalPackageName = request.originalPackageName,
+                    originalAppName = request.originalAppName,
+                    apkPath = finalBase.absolutePath,
+                    apkSizeBytes = totalBytes,
+                    createdAtMillis = now,
+                    splitApkPaths = finalSplitPaths,
+                    sourceVersionCode = request.sourceVersionCode
+                )
+            }
+
             val metaFile = File(outputDir, "$safeFileBase.json")
             metaFile.writeText(record.toJsonString(), Charsets.UTF_8)
+            finalOutputCleanupTarget = null
 
             record
         } catch (e: CloneException) {
+            runCatching { finalOutputCleanupTarget?.deleteRecursively() }
             throw e
         } catch (e: CancellationException) {
+            runCatching { finalOutputCleanupTarget?.deleteRecursively() }
             throw CloneException(CloneError.CANCELLED, cause = e)
         } catch (e: Exception) {
+            runCatching { finalOutputCleanupTarget?.deleteRecursively() }
             throw CloneException(
                 CloneError.UNKNOWN,
                 "Kesalahan pada langkah '${activeStep.label}': ${e.message}",
@@ -249,6 +428,17 @@ class ClonePipeline(
             )
         } finally {
             runCatching { workDir.deleteRecursively() }
+        }
+    }
+
+    companion object {
+        internal fun sanitizeSplitFileName(splitName: String, index: Int): String {
+            val cleaned = splitName.trim()
+                .removePrefix("split_")
+                .removeSuffix(".apk")
+                .replace(Regex("[^A-Za-z0-9._-]"), "_")
+                .ifEmpty { "part_${index + 1}" }
+            return "split_$cleaned.apk"
         }
     }
 }

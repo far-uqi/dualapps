@@ -86,8 +86,23 @@
                 android:textColor="@color/ink_primary"
                 android:textSize="13sp"
                 android:textStyle="bold"
-                tools:text="0/6" />
+                tools:text="0/7" />
         </LinearLayout>
+
+        <!-- Progres per file (tampil saat memproses Split APK multi-file) -->
+        <TextView
+            android:id="@+id/tvFileProgress"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:ellipsize="end"
+            android:fontFamily="monospace"
+            android:maxLines="1"
+            android:textColor="@color/ink_muted"
+            android:textSize="12sp"
+            android:visibility="gone"
+            tools:text="File 2/5 • split_config.xxhdpi.apk"
+            tools:visibility="visible" />
 
         <!-- Kartu daftar langkah pipeline -->
         <LinearLayout
