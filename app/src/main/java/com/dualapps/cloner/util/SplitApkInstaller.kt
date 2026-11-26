@@ -39,6 +39,7 @@ object SplitApkInstaller {
         }
 
         val packageInstaller = context.packageManager.packageInstaller
+        InstallProgressTracker.onSplitInstallStarted(record.clonePackageName, record.cloneName)
         return try {
             SplitInstallSessionCoordinator.writeAndCommit(allFiles) { totalBytes ->
                 val params = PackageInstaller.SessionParams(
@@ -53,6 +54,7 @@ object SplitApkInstaller {
                 val callbackIntent = Intent(context, SplitInstallResultReceiver::class.java).apply {
                     action = SplitInstallResultReceiver.ACTION_INSTALL_RESULT
                     putExtra(SplitInstallResultReceiver.EXTRA_CLONE_NAME, record.cloneName)
+                    putExtra(SplitInstallResultReceiver.EXTRA_CLONE_PACKAGE, record.clonePackageName)
                 }
                 val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                     PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
@@ -90,14 +92,14 @@ object SplitApkInstaller {
             }
             true
         } catch (e: CloneException) {
-            Toast.makeText(context, e.message ?: e.error.userMessage, Toast.LENGTH_LONG).show()
+            val msg = e.message ?: e.error.userMessage
+            InstallProgressTracker.onSplitInstallFailed(record.clonePackageName, record.cloneName, msg)
+            Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
             false
         } catch (e: Exception) {
-            Toast.makeText(
-                context,
-                context.getString(R.string.err_split_session_start, e.message.orEmpty()),
-                Toast.LENGTH_LONG
-            ).show()
+            val msg = context.getString(R.string.err_split_session_start, e.message.orEmpty())
+            InstallProgressTracker.onSplitInstallFailed(record.clonePackageName, record.cloneName, msg)
+            Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
             false
         }
     }

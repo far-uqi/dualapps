@@ -19,6 +19,8 @@ class SplitInstallResultReceiver : BroadcastReceiver() {
             PackageInstaller.STATUS_FAILURE
         )
         val statusMessage = intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE)
+        val cloneName = intent.getStringExtra(EXTRA_CLONE_NAME).orEmpty()
+        val clonePackage = intent.getStringExtra(EXTRA_CLONE_PACKAGE).orEmpty()
 
         when (val outcome = SplitInstallStatusMapper.mapStatus(status, statusMessage)) {
             SplitInstallOutcome.PendingUserAction -> {
@@ -29,25 +31,33 @@ class SplitInstallResultReceiver : BroadcastReceiver() {
                     intent.getParcelableExtra(Intent.EXTRA_INTENT)
                 }
                 if (confirmIntent != null) {
+                    InstallProgressTracker.onSplitWaitingUserConfirmation(clonePackage, cloneName)
                     confirmIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     runCatching { context.startActivity(confirmIntent) }.onFailure {
-                        Toast.makeText(
-                            context,
-                            SplitInstallStatusMapper.mapStatus(
-                                PackageInstaller.STATUS_FAILURE,
-                                it.message
-                            ).let { res ->
-                                (res as? SplitInstallOutcome.Failure)?.message.orEmpty()
-                            },
-                            Toast.LENGTH_LONG
-                        ).show()
+                        val errMsg = SplitInstallStatusMapper.mapStatus(
+                            PackageInstaller.STATUS_FAILURE,
+                            it.message
+                        ).let { res ->
+                            (res as? SplitInstallOutcome.Failure)?.message.orEmpty()
+                        }
+                        InstallProgressTracker.onSplitInstallFailed(clonePackage, cloneName, errMsg)
+                        Toast.makeText(context, errMsg, Toast.LENGTH_LONG).show()
                     }
+                } else {
+                    val errMsg = (SplitInstallStatusMapper.mapStatus(
+                        PackageInstaller.STATUS_FAILURE,
+                        "Dialog konfirmasi pemasangan tidak tersedia."
+                    ) as? SplitInstallOutcome.Failure)?.message.orEmpty()
+                    InstallProgressTracker.onSplitInstallFailed(clonePackage, cloneName, errMsg)
+                    Toast.makeText(context, errMsg, Toast.LENGTH_LONG).show()
                 }
             }
             is SplitInstallOutcome.Success -> {
+                InstallProgressTracker.onSplitInstallSucceeded(clonePackage, cloneName, outcome.message)
                 Toast.makeText(context, outcome.message, Toast.LENGTH_LONG).show()
             }
             is SplitInstallOutcome.Failure -> {
+                InstallProgressTracker.onSplitInstallFailed(clonePackage, cloneName, outcome.message)
                 Toast.makeText(context, outcome.message, Toast.LENGTH_LONG).show()
             }
         }
@@ -56,5 +66,6 @@ class SplitInstallResultReceiver : BroadcastReceiver() {
     companion object {
         const val ACTION_INSTALL_RESULT = "com.dualapps.cloner.ACTION_SPLIT_INSTALL_RESULT"
         const val EXTRA_CLONE_NAME = "extra_clone_name"
+        const val EXTRA_CLONE_PACKAGE = "extra_clone_package"
     }
 }

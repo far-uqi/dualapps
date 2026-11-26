@@ -56,6 +56,21 @@ enum class CloneError(val userMessage: String) {
     NO_UPDATE_AVAILABLE(
         "Aplikasi sumber belum memiliki versi yang lebih baru dari clone ini. Perbarui aplikasi sumber terlebih dahulu sebelum memperbarui clone."
     ),
+    BUNDLE_INVALID(
+        "Berkas bundle APKS/XAPK rusak atau bukan arsip ZIP yang valid."
+    ),
+    BUNDLE_NO_APK(
+        "Berkas bundle tidak berisi satu pun berkas APK di dalamnya."
+    ),
+    BUNDLE_NO_BASE_APK(
+        "Berkas bundle tidak memiliki base APK (semua berkas di dalamnya adalah split)."
+    ),
+    BUNDLE_PACKAGE_MISMATCH(
+        "Berkas-berkas APK di dalam bundle memiliki package name yang berbeda dan tidak konsisten."
+    ),
+    BUNDLE_HAS_OBB(
+        "Bundle ini berisi file OBB yang belum didukung — clone dibatalkan."
+    ),
     CANCELLED(
         "Proses clone dibatalkan oleh pengguna."
     ),

@@ -104,6 +104,41 @@
             android:textStyle="bold" />
     </LinearLayout>
 
+    <!-- Indikator progres pemasangan (non-blocking, tampil selama sesi pasang aktif) -->
+    <LinearLayout
+        android:id="@+id/cardInstallProgress"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:background="@drawable/bg_neo_card"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="14dp"
+        android:paddingTop="12dp"
+        android:paddingEnd="18dp"
+        android:paddingBottom="16dp"
+        android:visibility="gone"
+        tools:visibility="visible">
+
+        <ProgressBar
+            android:layout_width="22dp"
+            android:layout_height="22dp"
+            android:indeterminate="true"
+            android:indeterminateTint="@color/ink_primary" />
+
+        <TextView
+            android:id="@+id/tvInstallProgressText"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="12dp"
+            android:layout_weight="1"
+            android:fontFamily="sans-serif-black"
+            android:text="@string/status_installing"
+            android:textColor="@color/ink_primary"
+            android:textSize="13.5sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
     <!-- Header jumlah hasil -->
     <TextView
         android:id="@+id/tvResultsCount"

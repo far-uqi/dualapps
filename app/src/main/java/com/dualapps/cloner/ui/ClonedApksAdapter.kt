@@ -59,6 +59,11 @@ class ClonedApksAdapter(
                 if (position % 2 == 0) R.drawable.bg_neo_folder_tab_teal
                 else R.drawable.bg_neo_folder_tab_purple
             )
+            binding.tvFolderTab.text = if (record.sourceOrigin == "APKS" || record.sourceOrigin == "XAPK") {
+                ctx.getString(R.string.tab_clone_result_origin_format, record.sourceOrigin)
+            } else {
+                ctx.getString(R.string.tab_clone_result)
+            }
             binding.tvCloneName.text = record.cloneName
             binding.tvClonePackage.text = record.clonePackageName
             val sizeText = FormatUtils.formatFileSize(record.apkSizeBytes)

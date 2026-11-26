@@ -111,15 +111,15 @@ class MainActivity : AppCompatActivity() {
             binding.etSearch.text?.clear()
         }
 
-        // Tombol + kuning: pilih file .apk eksternal untuk dikloning (Fase 7)
+        // Tombol + kuning: pilih berkas .apk, .apks, atau .xapk untuk dikloning (Fase 7 & 12)
         binding.btnAddApk.setOnClickListener {
-            pickApkLauncher.launch(arrayOf("application/vnd.android.package-archive"))
+            pickApkLauncher.launch(arrayOf("*/*"))
         }
     }
 
     private fun handlePickedApkUri(uri: Uri) {
         importApkJob?.cancel()
-        Toast.makeText(this, R.string.msg_reading_apk_file, Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, R.string.msg_reading_bundle_file, Toast.LENGTH_SHORT).show()
 
         importApkJob = uiScope.launch {
             val result = withContext(Dispatchers.IO) {
@@ -134,8 +134,9 @@ class MainActivity : AppCompatActivity() {
                 if (copiedFile == null) {
                     ApkFileValidationResult.Invalid(getString(R.string.err_apk_file_unreadable))
                 } else {
-                    ApkFileSourceValidator.validate(
-                        apkFile = copiedFile,
+                    ApkFileSourceValidator.validateAnySource(
+                        pickedFile = copiedFile,
+                        cacheDir = cacheDir,
                         inspector = AndroidApkArchiveInspector(packageManager)
                     )
                 }
@@ -147,7 +148,8 @@ class MainActivity : AppCompatActivity() {
                         ConfigureCloneActivity.createIntent(
                             context = this@MainActivity,
                             app = result.app,
-                            isFromApkFile = true
+                            isFromApkFile = true,
+                            sourceOrigin = result.sourceOrigin
                         )
                     )
                 }

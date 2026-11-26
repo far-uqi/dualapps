@@ -13,7 +13,7 @@
     <string name="cd_settings">Pengaturan</string>
     <string name="cd_results">Hasil Clone</string>
     <string name="cd_search">Cari aplikasi</string>
-    <string name="cd_add_apk">Clone dari berkas APK</string>
+    <string name="cd_add_apk">Clone dari berkas APK, APKS, atau XAPK</string>
     <string name="cd_clear_search">Hapus pencarian</string>
     <string name="hint_search_apps">Cari nama atau package…</string>
     <string name="section_installed_apps">Aplikasi Terpasang</string>
@@ -48,8 +48,15 @@
     <string name="title_configure_clone">Atur Clone</string>
     <string name="tab_source_app">APLIKASI SUMBER</string>
     <string name="tab_source_apk_file">BERKAS APK SUMBER</string>
+    <string name="tab_source_apks_file">BERKAS APKS SUMBER</string>
+    <string name="tab_source_xapk_file">BERKAS XAPK SUMBER</string>
     <string name="tab_clone_result">HASIL CLONE</string>
+    <string name="tab_clone_result_origin_format">HASIL CLONE • dari berkas %1$s</string>
     <string name="msg_reading_apk_file">Membaca dan memvalidasi berkas APK…</string>
+    <string name="msg_reading_bundle_file">Membaca dan mengekstrak berkas APK/APKS/XAPK…</string>
+    <string name="status_installing">Memasang…</string>
+    <string name="status_install_waiting_confirm">Menunggu konfirmasi pemasangan…</string>
+    <string name="status_install_single_apk">Memasang… Lanjutkan di dialog sistem.</string>
     <string name="err_apk_file_unreadable">Gagal membuka berkas APK yang dipilih. Pastikan berkas masih tersedia lalu coba lagi.</string>
     <string name="label_clone_name">Nama Clone</string>
     <string name="hint_clone_name">Contoh: Dualapps 2</string>

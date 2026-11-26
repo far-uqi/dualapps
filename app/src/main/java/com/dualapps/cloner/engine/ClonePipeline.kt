@@ -62,6 +62,7 @@ data class CloneRequest(
     val sourceVersionCode: Long = 0L,
     val sourceVersionName: String = "",
     val customIconSourcePath: String? = null,
+    val sourceOrigin: String = "",
     val isUpdate: Boolean = false,
     val existingRecordId: String? = null,
     val previousSourceVersionCode: Long = 0L
@@ -412,7 +413,8 @@ class ClonePipeline(
                     splitApkPaths = emptyList(),
                     sourceVersionCode = request.sourceVersionCode,
                     sourceVersionName = request.sourceVersionName,
-                    customIconPath = persistedIconPath
+                    customIconPath = persistedIconPath,
+                    sourceOrigin = request.sourceOrigin
                 )
             } else {
                 val stagingDir = File(outputDir, "${safeFileBase}_staging_$now")
@@ -462,7 +464,8 @@ class ClonePipeline(
                     splitApkPaths = finalSplitPaths,
                     sourceVersionCode = request.sourceVersionCode,
                     sourceVersionName = request.sourceVersionName,
-                    customIconPath = persistedIconPath
+                    customIconPath = persistedIconPath,
+                    sourceOrigin = request.sourceOrigin
                 )
             }
 

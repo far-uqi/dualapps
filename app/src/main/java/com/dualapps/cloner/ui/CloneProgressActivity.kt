@@ -26,6 +26,8 @@ import com.dualapps.cloner.model.SplitApkFile
 import com.dualapps.cloner.util.ApkInstaller
 import com.dualapps.cloner.util.FormatUtils
 import com.dualapps.cloner.util.IconProcessor
+import com.dualapps.cloner.util.InstallProgressState
+import com.dualapps.cloner.util.InstallProgressTracker
 import com.dualapps.cloner.util.SplitApkInstaller
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -78,7 +80,8 @@ class CloneProgressActivity : AppCompatActivity() {
             customIconSourcePath = customIconPath,
             isUpdate = isUpdate,
             existingRecordId = intent.getStringExtra(EXTRA_EXISTING_RECORD_ID),
-            previousSourceVersionCode = intent.getLongExtra(EXTRA_PREVIOUS_VERSION_CODE, 0L)
+            previousSourceVersionCode = intent.getLongExtra(EXTRA_PREVIOUS_VERSION_CODE, 0L),
+            sourceOrigin = intent.getStringExtra(EXTRA_SOURCE_ORIGIN).orEmpty()
         )
 
         setupUi()
@@ -101,6 +104,11 @@ class CloneProgressActivity : AppCompatActivity() {
         completedRecord?.let { record ->
             outState.putString(STATE_COMPLETED_RECORD_JSON, record.toJsonString())
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        InstallProgressTracker.onActivityResumed()
     }
 
     override fun onDestroy() {
@@ -126,11 +134,40 @@ class CloneProgressActivity : AppCompatActivity() {
             if (record.isSplitClone) {
                 SplitApkInstaller.installSplitClone(this, record)
             } else {
-                ApkInstaller.installApk(this, record.apkFile)
+                val launched = ApkInstaller.installApk(this, record.apkFile)
+                if (launched) {
+                    InstallProgressTracker.onSingleApkInstallLaunched(record.clonePackageName, record.cloneName)
+                }
             }
         }
 
         buildStepRows()
+        observeInstallProgress()
+    }
+
+    private fun observeInstallProgress() {
+        uiScope.launch {
+            InstallProgressTracker.state.collect { state ->
+                when (state) {
+                    InstallProgressState.Idle -> {
+                        binding.cardInstallProgress.visibility = View.GONE
+                    }
+                    is InstallProgressState.Installing -> {
+                        binding.cardInstallProgress.visibility = View.VISIBLE
+                        binding.tvInstallProgressText.text = if (state.cloneName.isNotBlank()) {
+                            "${state.message} (${state.cloneName})"
+                        } else {
+                            state.message
+                        }
+                    }
+                    is InstallProgressState.Succeeded,
+                    is InstallProgressState.Failed -> {
+                        binding.cardInstallProgress.visibility = View.GONE
+                        InstallProgressTracker.consumeTerminalState()
+                    }
+                }
+            }
+        }
     }
 
     private fun buildStepRows() {
@@ -362,6 +399,7 @@ class CloneProgressActivity : AppCompatActivity() {
         private const val EXTRA_IS_UPDATE = "extra_is_update"
         private const val EXTRA_EXISTING_RECORD_ID = "extra_existing_record_id"
         private const val EXTRA_PREVIOUS_VERSION_CODE = "extra_previous_version_code"
+        private const val EXTRA_SOURCE_ORIGIN = "extra_source_origin"
         private const val EXTRA_SPLIT_NAMES = "extra_split_names"
         private const val EXTRA_SPLIT_PATHS = "extra_split_paths"
         private const val EXTRA_SPLIT_SIZES = "extra_split_sizes"
@@ -378,7 +416,8 @@ class CloneProgressActivity : AppCompatActivity() {
             customIconPath: String? = null,
             splitFiles: List<SplitApkFile> = emptyList(),
             sourceVersionCode: Long = 0L,
-            sourceVersionName: String = ""
+            sourceVersionName: String = "",
+            sourceOrigin: String = ""
         ): Intent {
             return Intent(context, CloneProgressActivity::class.java).apply {
                 putExtra(EXTRA_SOURCE_DIR, sourceDir)
@@ -389,6 +428,7 @@ class CloneProgressActivity : AppCompatActivity() {
                 putExtra(EXTRA_CLONE_PACKAGE, clonePackageName)
                 putExtra(EXTRA_VERSION_CODE, sourceVersionCode)
                 putExtra(EXTRA_VERSION_NAME, sourceVersionName)
+                putExtra(EXTRA_SOURCE_ORIGIN, sourceOrigin)
                 if (!customIconPath.isNullOrBlank()) {
                     putExtra(EXTRA_CUSTOM_ICON_PATH, customIconPath)
                 }
@@ -416,7 +456,8 @@ class CloneProgressActivity : AppCompatActivity() {
                 customIconPath = record.customIconPath?.takeIf { File(it).exists() },
                 splitFiles = sourceApp.splitFiles,
                 sourceVersionCode = sourceApp.versionCode,
-                sourceVersionName = sourceApp.versionName.orEmpty()
+                sourceVersionName = sourceApp.versionName.orEmpty(),
+                sourceOrigin = record.sourceOrigin
             ).apply {
                 putExtra(EXTRA_IS_UPDATE, true)
                 putExtra(EXTRA_EXISTING_RECORD_ID, record.id)

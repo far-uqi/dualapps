@@ -18,7 +18,8 @@ data class ClonedApkRecord(
     val splitApkPaths: List<String> = emptyList(),
     val sourceVersionCode: Long = 0L,
     val sourceVersionName: String = "",
-    val customIconPath: String? = null
+    val customIconPath: String? = null,
+    val sourceOrigin: String = ""
 ) {
     val apkFile: File get() = File(apkPath)
 
@@ -46,6 +47,9 @@ data class ClonedApkRecord(
             append("\"createdAtMillis\":").append(createdAtMillis).append(',')
             append("\"sourceVersionCode\":").append(sourceVersionCode).append(',')
             append("\"sourceVersionName\":").append(quote(sourceVersionName)).append(',')
+            if (sourceOrigin.isNotBlank()) {
+                append("\"sourceOrigin\":").append(quote(sourceOrigin)).append(',')
+            }
             if (!customIconPath.isNullOrBlank()) {
                 append("\"customIconPath\":").append(quote(customIconPath)).append(',')
             }
@@ -91,6 +95,7 @@ data class ClonedApkRecord(
             val sourceVersion = numbers["sourceVersionCode"] ?: 0L
             val sourceVerName = strings["sourceVersionName"].orEmpty()
             val customIcon = strings["customIconPath"]?.takeIf { it.isNotBlank() }
+            val origin = strings["sourceOrigin"].orEmpty()
             return ClonedApkRecord(
                 id = id,
                 cloneName = cloneName,
@@ -103,7 +108,8 @@ data class ClonedApkRecord(
                 splitApkPaths = splitPaths,
                 sourceVersionCode = sourceVersion,
                 sourceVersionName = sourceVerName,
-                customIconPath = customIcon
+                customIconPath = customIcon,
+                sourceOrigin = origin
             )
         }
 

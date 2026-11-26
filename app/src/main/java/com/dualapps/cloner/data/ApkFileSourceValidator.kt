@@ -3,6 +3,7 @@ package com.dualapps.cloner.data
 import android.content.pm.PackageManager
 import android.graphics.drawable.Drawable
 import android.os.Build
+import com.dualapps.cloner.model.CloneError
 import com.dualapps.cloner.model.InstalledApp
 import java.io.File
 import java.io.FileOutputStream
@@ -17,7 +18,8 @@ data class ApkArchiveMetadata(
     val packageName: String,
     val label: String,
     val versionName: String,
-    val apkSizeBytes: Long
+    val apkSizeBytes: Long,
+    val versionCode: Long = 0L
 )
 
 /**
@@ -47,12 +49,19 @@ class AndroidApkArchiveInspector(
             .takeUnless { it.isNullOrEmpty() }
             ?: pkgName
         val versionName = info.versionName.orEmpty()
+        val versionCode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            info.longVersionCode
+        } else {
+            @Suppress("DEPRECATION")
+            info.versionCode.toLong()
+        }
 
         return ApkArchiveMetadata(
             packageName = pkgName,
             label = label,
             versionName = versionName,
-            apkSizeBytes = apkFile.length()
+            apkSizeBytes = apkFile.length(),
+            versionCode = versionCode
         )
     }
 
@@ -84,25 +93,39 @@ class AndroidApkArchiveInspector(
 }
 
 sealed class ApkFileValidationResult {
-    data class Valid(val app: InstalledApp) : ApkFileValidationResult()
-    data class Invalid(val message: String) : ApkFileValidationResult()
+    data class Valid(
+        val app: InstalledApp,
+        val sourceOrigin: String = "APK"
+    ) : ApkFileValidationResult()
+
+    data class Invalid(
+        val message: String,
+        val error: CloneError? = null
+    ) : ApkFileValidationResult()
 }
 
 /**
- * Menyalin berkas `.apk` pilihan pengguna ke folder sementara di `cacheDir/picked_apks/`
- * lalu memvalidasi struktur ZIP/manifest dan metadata package-nya.
+ * Menyalin berkas `.apk` / `.apks` / `.xapk` pilihan pengguna ke folder sementara di
+ * `cacheDir/picked_apks/` lalu memvalidasi struktur ZIP/manifest dan metadata package-nya.
  */
 object ApkFileSourceValidator {
 
     const val PICKED_APKS_DIR_NAME = "picked_apks"
+    private const val STALE_CACHE_AGE_MILLIS = 60L * 60L * 1000L // 1 jam
 
     fun copyToCache(inputStream: InputStream, cacheDir: File): File {
         val dir = File(cacheDir, PICKED_APKS_DIR_NAME)
         if (!dir.exists()) {
             dir.mkdirs()
         }
-        // Bersihkan sisa berkas APK pilihan lama agar cache tidak menumpuk
-        dir.listFiles()?.forEach { old -> runCatching { old.delete() } }
+        // Hanya bersihkan sisa berkas/folder bundle yang sudah basi (> 1 jam) agar tidak menghapus
+        // berkas bundle lain yang masih dipakai sesi aktif.
+        val cutoff = System.currentTimeMillis() - STALE_CACHE_AGE_MILLIS
+        dir.listFiles()?.forEach { old ->
+            if (old.lastModified() < cutoff) {
+                runCatching { old.deleteRecursively() }
+            }
+        }
 
         val dest = File(dir, "picked_${UUID.randomUUID()}.apk")
         inputStream.use { input ->
@@ -111,6 +134,25 @@ object ApkFileSourceValidator {
             }
         }
         return dest
+    }
+
+    /**
+     * Memvalidasi berkas yang dipilih pengguna — otomatis mendeteksi APK tunggal (Fase 7) vs
+     * bundle APKS/XAPK (Fase 12) berdasarkan ISI arsip, bukan hanya ekstensi berkas.
+     */
+    fun validateAnySource(
+        pickedFile: File,
+        cacheDir: File,
+        inspector: ApkArchiveInspector
+    ): ApkFileValidationResult {
+        val result = ApkBundleExtractor.extractAndValidate(pickedFile, cacheDir, inspector)
+        // Jika hasil berupa bundle APKS/XAPK yang sudah diekstrak ke subfolder, salinan arsip mentah boleh dibersihkan
+        if (result is ApkFileValidationResult.Valid && result.sourceOrigin != "APK") {
+            runCatching { pickedFile.delete() }
+        } else if (result is ApkFileValidationResult.Invalid) {
+            runCatching { pickedFile.delete() }
+        }
+        return result
     }
 
     fun validate(
@@ -152,8 +194,10 @@ object ApkFileSourceValidator {
                 sourceDir = apkFile.absolutePath,
                 isSystemApp = false,
                 isSplitApk = false,
-                versionName = metadata.versionName
-            )
+                versionName = metadata.versionName,
+                versionCode = metadata.versionCode
+            ),
+            sourceOrigin = "APK"
         )
     }
 }

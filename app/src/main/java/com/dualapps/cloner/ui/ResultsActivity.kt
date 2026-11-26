@@ -19,6 +19,8 @@ import com.dualapps.cloner.engine.InstalledPackageVersion
 import com.dualapps.cloner.model.ClonedApkRecord
 import com.dualapps.cloner.model.InstalledApp
 import com.dualapps.cloner.util.ApkInstaller
+import com.dualapps.cloner.util.InstallProgressState
+import com.dualapps.cloner.util.InstallProgressTracker
 import com.dualapps.cloner.util.SplitApkInstaller
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -57,6 +59,7 @@ class ResultsActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        InstallProgressTracker.onActivityResumed()
         refreshResults()
     }
 
@@ -72,6 +75,36 @@ class ResultsActivity : AppCompatActivity() {
         }
         binding.rvResults.layoutManager = LinearLayoutManager(this)
         binding.rvResults.adapter = adapter
+        observeInstallProgress()
+    }
+
+    private fun observeInstallProgress() {
+        uiScope.launch {
+            InstallProgressTracker.state.collect { state ->
+                when (state) {
+                    InstallProgressState.Idle -> {
+                        binding.cardInstallProgress.visibility = View.GONE
+                    }
+                    is InstallProgressState.Installing -> {
+                        binding.cardInstallProgress.visibility = View.VISIBLE
+                        binding.tvInstallProgressText.text = if (state.cloneName.isNotBlank()) {
+                            "${state.message} (${state.cloneName})"
+                        } else {
+                            state.message
+                        }
+                    }
+                    is InstallProgressState.Succeeded -> {
+                        binding.cardInstallProgress.visibility = View.GONE
+                        InstallProgressTracker.consumeTerminalState()
+                        refreshResults()
+                    }
+                    is InstallProgressState.Failed -> {
+                        binding.cardInstallProgress.visibility = View.GONE
+                        InstallProgressTracker.consumeTerminalState()
+                    }
+                }
+            }
+        }
     }
 
     private fun refreshResults() {
@@ -128,7 +161,10 @@ class ResultsActivity : AppCompatActivity() {
         if (record.isSplitClone) {
             SplitApkInstaller.installSplitClone(this, record)
         } else {
-            ApkInstaller.installApk(this, record.apkFile)
+            val launched = ApkInstaller.installApk(this, record.apkFile)
+            if (launched) {
+                InstallProgressTracker.onSingleApkInstallLaunched(record.clonePackageName, record.cloneName)
+            }
         }
     }
 
