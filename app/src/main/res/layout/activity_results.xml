@@ -121,6 +121,7 @@
         tools:visibility="visible">
 
         <ProgressBar
+            android:id="@+id/pbInstallProgress"
             android:layout_width="22dp"
             android:layout_height="22dp"
             android:indeterminate="true"
@@ -137,6 +138,23 @@
             android:textColor="@color/ink_primary"
             android:textSize="13.5sp"
             android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/btnDismissInstallStatus"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:background="@drawable/bg_neo_button_white"
+            android:clickable="true"
+            android:focusable="true"
+            android:fontFamily="sans-serif-black"
+            android:paddingHorizontal="10dp"
+            android:paddingVertical="6dp"
+            android:text="@string/action_dismiss"
+            android:textColor="@color/ink_primary"
+            android:textSize="11.5sp"
+            android:textStyle="bold"
+            android:visibility="gone" />
     </LinearLayout>
 
     <!-- Header jumlah hasil -->
@@ -152,6 +170,34 @@
         android:textStyle="bold"
         tools:text="APK Hasil Clone (2)" />
 
+    <!-- Keadaan memuat (tampil sebelum repository selesai memuat agar tidak flash kosong) -->
+    <LinearLayout
+        android:id="@+id/layoutLoading"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_marginTop="10dp"
+        android:layout_weight="1"
+        android:gravity="center"
+        android:orientation="vertical"
+        android:padding="24dp">
+
+        <ProgressBar
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:indeterminate="true"
+            android:indeterminateTint="@color/ink_primary" />
+
+        <TextView
+            android:id="@+id/tvLoadingResults"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:fontFamily="sans-serif-medium"
+            android:text="@string/loading_results"
+            android:textColor="@color/ink_muted"
+            android:textSize="13.5sp" />
+    </LinearLayout>
+
     <!-- Daftar hasil clone -->
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/rvResults"
@@ -161,6 +207,7 @@
         android:layout_weight="1"
         android:clipToPadding="false"
         android:paddingBottom="12dp"
+        android:visibility="gone"
         tools:listitem="@layout/item_cloned_apk" />
 
     <!-- Keadaan kosong -->

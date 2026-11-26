@@ -6,6 +6,8 @@ import android.content.Intent
 import android.content.pm.PackageInstaller
 import android.net.Uri
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import android.widget.Toast
 import androidx.core.content.FileProvider
@@ -21,7 +23,11 @@ import java.io.OutputStream
  */
 object SplitApkInstaller {
 
-    fun installSplitClone(context: Context, record: ClonedApkRecord): Boolean {
+    fun installSplitClone(
+        context: Context,
+        record: ClonedApkRecord,
+        origin: InstallOrigin = InstallOrigin.RESULTS
+    ): Boolean {
         val allFiles = record.allApkFiles
         if (allFiles.any { !it.exists() }) {
             Toast.makeText(context, R.string.err_apk_not_found, Toast.LENGTH_SHORT).show()
@@ -39,7 +45,8 @@ object SplitApkInstaller {
         }
 
         val packageInstaller = context.packageManager.packageInstaller
-        InstallProgressTracker.onSplitInstallStarted(record.clonePackageName, record.cloneName)
+        val mainHandler = Handler(Looper.getMainLooper())
+        InstallProgressTracker.onSplitInstallStarted(record.clonePackageName, record.cloneName, origin)
         return try {
             SplitInstallSessionCoordinator.writeAndCommit(allFiles) { totalBytes ->
                 val params = PackageInstaller.SessionParams(
@@ -50,6 +57,39 @@ object SplitApkInstaller {
                 }
                 val sessionId = packageInstaller.createSession(params)
                 val session = packageInstaller.openSession(sessionId)
+
+                // Pantau callback sesi resmi Android agar segera beralih dari "Menunggu konfirmasi"
+                // ke "Memasang…" saat pengguna menekan INSTALL, dan otomatis unregister saat selesai.
+                val sessionCallback = object : PackageInstaller.SessionCallback() {
+                    override fun onCreated(id: Int) = Unit
+                    override fun onBadgingChanged(id: Int) = Unit
+                    override fun onActiveChanged(id: Int, active: Boolean) {
+                        if (id == sessionId && active) {
+                            InstallProgressTracker.onSplitInstallConfirmed(
+                                record.clonePackageName,
+                                record.cloneName
+                            )
+                        }
+                    }
+
+                    override fun onProgressChanged(id: Int, progress: Float) {
+                        if (id == sessionId && progress > 0f) {
+                            InstallProgressTracker.onSplitInstallConfirmed(
+                                record.clonePackageName,
+                                record.cloneName
+                            )
+                        }
+                    }
+
+                    override fun onFinished(id: Int, success: Boolean) {
+                        if (id == sessionId) {
+                            runCatching { packageInstaller.unregisterSessionCallback(this) }
+                        }
+                    }
+                }
+                runCatching {
+                    packageInstaller.registerSessionCallback(sessionCallback, mainHandler)
+                }
 
                 val callbackIntent = Intent(context, SplitInstallResultReceiver::class.java).apply {
                     action = SplitInstallResultReceiver.ACTION_INSTALL_RESULT
@@ -82,6 +122,7 @@ object SplitApkInstaller {
                     }
 
                     override fun abandon() {
+                        runCatching { packageInstaller.unregisterSessionCallback(sessionCallback) }
                         runCatching { session.abandon() }
                     }
 

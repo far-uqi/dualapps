@@ -19,14 +19,17 @@ import com.dualapps.cloner.engine.InstalledPackageVersion
 import com.dualapps.cloner.model.ClonedApkRecord
 import com.dualapps.cloner.model.InstalledApp
 import com.dualapps.cloner.util.ApkInstaller
+import com.dualapps.cloner.util.InstallOrigin
 import com.dualapps.cloner.util.InstallProgressState
 import com.dualapps.cloner.util.InstallProgressTracker
+import com.dualapps.cloner.util.ResultsLoadState
 import com.dualapps.cloner.util.SplitApkInstaller
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -39,6 +42,8 @@ class ResultsActivity : AppCompatActivity() {
 
     private val uiScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var refreshJob: Job? = null
+    private var statusAutoHideJob: Job? = null
+    private var hasLoadedOnce: Boolean = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -48,6 +53,7 @@ class ResultsActivity : AppCompatActivity() {
         repository = ClonedApksRepository(filesDir)
         installedAppsRepository = InstalledAppsRepository(packageManager)
         adapter = ClonedApksAdapter(
+            onOpenClick = ::openInstalledClone,
             onInstallClick = ::installRecord,
             onShareClick = ::shareRecord,
             onDeleteClick = ::confirmDeleteRecord,
@@ -55,6 +61,11 @@ class ResultsActivity : AppCompatActivity() {
         )
 
         setupUi()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        InstallProgressTracker.onActivityPaused()
     }
 
     override fun onResume() {
@@ -65,6 +76,7 @@ class ResultsActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        statusAutoHideJob?.cancel()
         uiScope.cancel()
     }
 
@@ -73,9 +85,34 @@ class ResultsActivity : AppCompatActivity() {
         binding.btnPlayProtectGuide.setOnClickListener {
             startActivity(PlayProtectGuideActivity.createIntent(this))
         }
+        binding.btnDismissInstallStatus.setOnClickListener {
+            statusAutoHideJob?.cancel()
+            InstallProgressTracker.consumeTerminalState()
+        }
         binding.rvResults.layoutManager = LinearLayoutManager(this)
         binding.rvResults.adapter = adapter
+        applyLoadState(ResultsLoadState.Loading)
         observeInstallProgress()
+    }
+
+    private fun applyLoadState(state: ResultsLoadState) {
+        when (state) {
+            ResultsLoadState.Loading -> {
+                binding.layoutLoading.visibility = View.VISIBLE
+                binding.layoutEmpty.visibility = View.GONE
+                binding.rvResults.visibility = View.GONE
+            }
+            ResultsLoadState.Empty -> {
+                binding.layoutLoading.visibility = View.GONE
+                binding.layoutEmpty.visibility = View.VISIBLE
+                binding.rvResults.visibility = View.GONE
+            }
+            is ResultsLoadState.Content -> {
+                binding.layoutLoading.visibility = View.GONE
+                binding.layoutEmpty.visibility = View.GONE
+                binding.rvResults.visibility = View.VISIBLE
+            }
+        }
     }
 
     private fun observeInstallProgress() {
@@ -86,7 +123,10 @@ class ResultsActivity : AppCompatActivity() {
                         binding.cardInstallProgress.visibility = View.GONE
                     }
                     is InstallProgressState.Installing -> {
+                        statusAutoHideJob?.cancel()
                         binding.cardInstallProgress.visibility = View.VISIBLE
+                        binding.pbInstallProgress.visibility = View.VISIBLE
+                        binding.btnDismissInstallStatus.visibility = View.GONE
                         binding.tvInstallProgressText.text = if (state.cloneName.isNotBlank()) {
                             "${state.message} (${state.cloneName})"
                         } else {
@@ -94,13 +134,27 @@ class ResultsActivity : AppCompatActivity() {
                         }
                     }
                     is InstallProgressState.Succeeded -> {
-                        binding.cardInstallProgress.visibility = View.GONE
-                        InstallProgressTracker.consumeTerminalState()
+                        binding.cardInstallProgress.visibility = View.VISIBLE
+                        binding.pbInstallProgress.visibility = View.GONE
+                        binding.btnDismissInstallStatus.visibility = View.VISIBLE
+                        binding.tvInstallProgressText.text = if (state.cloneName.isNotBlank()) {
+                            "${getString(R.string.status_installed_done)} (${state.cloneName})"
+                        } else {
+                            getString(R.string.status_installed_done)
+                        }
                         refreshResults()
+                        statusAutoHideJob?.cancel()
+                        statusAutoHideJob = uiScope.launch {
+                            delay(3500L)
+                            InstallProgressTracker.consumeTerminalState()
+                        }
                     }
                     is InstallProgressState.Failed -> {
-                        binding.cardInstallProgress.visibility = View.GONE
-                        InstallProgressTracker.consumeTerminalState()
+                        statusAutoHideJob?.cancel()
+                        binding.cardInstallProgress.visibility = View.VISIBLE
+                        binding.pbInstallProgress.visibility = View.GONE
+                        binding.btnDismissInstallStatus.visibility = View.VISIBLE
+                        binding.tvInstallProgressText.text = state.message
                     }
                 }
             }
@@ -109,6 +163,9 @@ class ResultsActivity : AppCompatActivity() {
 
     private fun refreshResults() {
         refreshJob?.cancel()
+        if (!hasLoadedOnce) {
+            applyLoadState(ResultsLoadState.Loading)
+        }
         refreshJob = uiScope.launch {
             val items = withContext(Dispatchers.IO) {
                 val records = repository.loadAll()
@@ -133,17 +190,31 @@ class ResultsActivity : AppCompatActivity() {
                     ClonedResultItem(
                         record = record,
                         updateStatus = updateStatus,
-                        installedSourceApp = sourceApp
+                        installedSourceApp = sourceApp,
+                        isCloneInstalled = isCloneInstalled
                     )
                 }
             }
 
+            hasLoadedOnce = true
             adapter.submitList(items)
             binding.tvResultsCount.text = getString(R.string.section_results_count, items.size)
+            applyLoadState(
+                InstallProgressTracker.resolveResultsLoadState(
+                    isLoading = false,
+                    itemCount = items.size
+                )
+            )
+        }
+    }
 
-            val isEmpty = items.isEmpty()
-            binding.layoutEmpty.visibility = if (isEmpty) View.VISIBLE else View.GONE
-            binding.rvResults.visibility = if (isEmpty) View.GONE else View.VISIBLE
+    private fun openInstalledClone(record: ClonedApkRecord) {
+        val launchIntent = packageManager.getLaunchIntentForPackage(record.clonePackageName)
+        if (launchIntent != null) {
+            launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            startActivity(launchIntent)
+        } else {
+            Toast.makeText(this, R.string.err_open_clone_no_launcher, Toast.LENGTH_LONG).show()
         }
     }
 
@@ -159,11 +230,15 @@ class ResultsActivity : AppCompatActivity() {
 
     private fun installRecord(record: ClonedApkRecord) {
         if (record.isSplitClone) {
-            SplitApkInstaller.installSplitClone(this, record)
+            SplitApkInstaller.installSplitClone(this, record, origin = InstallOrigin.RESULTS)
         } else {
             val launched = ApkInstaller.installApk(this, record.apkFile)
             if (launched) {
-                InstallProgressTracker.onSingleApkInstallLaunched(record.clonePackageName, record.cloneName)
+                InstallProgressTracker.onSingleApkInstallLaunched(
+                    record.clonePackageName,
+                    record.cloneName,
+                    origin = InstallOrigin.RESULTS
+                )
             }
         }
     }

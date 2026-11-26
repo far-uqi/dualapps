@@ -14,10 +14,12 @@ import com.dualapps.cloner.util.FormatUtils
 data class ClonedResultItem(
     val record: ClonedApkRecord,
     val updateStatus: CloneUpdateStatus,
-    val installedSourceApp: InstalledApp?
+    val installedSourceApp: InstalledApp?,
+    val isCloneInstalled: Boolean = false
 )
 
 class ClonedApksAdapter(
+    private val onOpenClick: (ClonedApkRecord) -> Unit,
     private val onInstallClick: (ClonedApkRecord) -> Unit,
     private val onShareClick: (ClonedApkRecord) -> Unit,
     private val onDeleteClick: (ClonedApkRecord) -> Unit,
@@ -65,6 +67,11 @@ class ClonedApksAdapter(
                 ctx.getString(R.string.tab_clone_result)
             }
             binding.tvCloneName.text = record.cloneName
+            binding.tvInstalledBadge.visibility =
+                if (item.isCloneInstalled) View.VISIBLE else View.GONE
+            binding.btnOpen.visibility =
+                if (item.isCloneInstalled) View.VISIBLE else View.GONE
+            binding.btnOpen.setOnClickListener { onOpenClick(record) }
             binding.tvClonePackage.text = record.clonePackageName
             val sizeText = FormatUtils.formatFileSize(record.apkSizeBytes)
             binding.tvApkSize.text = if (record.isSplitClone) {

@@ -57,6 +57,15 @@
     <string name="status_installing">Memasang…</string>
     <string name="status_install_waiting_confirm">Menunggu konfirmasi pemasangan…</string>
     <string name="status_install_single_apk">Memasang… Lanjutkan di dialog sistem.</string>
+    <string name="status_installed_done">Terpasang ✓</string>
+    <string name="clone_done_banner_title">Clone selesai dibuat ✓</string>
+    <string name="clone_done_next_step">Ketuk PASANG untuk memasang clone ini di perangkatmu.</string>
+    <string name="clone_installed_redirecting">Terpasang ✓ — Membuka halaman Hasil Clone…</string>
+    <string name="action_open_app">BUKA</string>
+    <string name="action_dismiss">TUTUP</string>
+    <string name="badge_installed">Terpasang ✓</string>
+    <string name="err_open_clone_no_launcher">Aplikasi clone sudah terpasang, tetapi tidak memiliki pintasan launcher yang bisa dibuka langsung.</string>
+    <string name="loading_results">Memuat daftar clone…</string>
     <string name="err_apk_file_unreadable">Gagal membuka berkas APK yang dipilih. Pastikan berkas masih tersedia lalu coba lagi.</string>
     <string name="label_clone_name">Nama Clone</string>
     <string name="hint_clone_name">Contoh: Dualapps 2</string>

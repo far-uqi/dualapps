@@ -5,6 +5,7 @@ import android.content.Intent
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import com.dualapps.cloner.R
@@ -27,6 +28,7 @@ import com.dualapps.cloner.model.SplitApkFile
 import com.dualapps.cloner.util.ApkInstaller
 import com.dualapps.cloner.util.FormatUtils
 import com.dualapps.cloner.util.IconProcessor
+import com.dualapps.cloner.util.InstallOrigin
 import com.dualapps.cloner.util.InstallProgressState
 import com.dualapps.cloner.util.InstallProgressTracker
 import com.dualapps.cloner.util.SplitApkInstaller
@@ -35,6 +37,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -44,6 +47,7 @@ class CloneProgressActivity : AppCompatActivity() {
     private lateinit var binding: ActivityCloneProgressBinding
     private val uiScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var cloneJob: Job? = null
+    private var autoNavigateJob: Job? = null
 
     private lateinit var request: CloneRequest
     private var customIconPath: String? = null
@@ -107,13 +111,25 @@ class CloneProgressActivity : AppCompatActivity() {
         }
     }
 
+    override fun onPause() {
+        super.onPause()
+        InstallProgressTracker.onActivityPaused()
+    }
+
     override fun onResume() {
         super.onResume()
         InstallProgressTracker.onActivityResumed()
+        // Bila clone APK tunggal baru saja selesai dipasang lewat dialog sistem, tampilkan tombol BUKA
+        val rec = completedRecord
+        if (rec != null && isPackageInstalledOnDevice(rec.clonePackageName)) {
+            binding.btnOpenApp.visibility = View.VISIBLE
+            binding.tvSuccessNextStep.setText(R.string.status_installed_done)
+        }
     }
 
     override fun onDestroy() {
         super.onDestroy()
+        autoNavigateJob?.cancel()
         cloneJob?.cancel()
         uiScope.cancel()
     }
@@ -121,6 +137,7 @@ class CloneProgressActivity : AppCompatActivity() {
     private fun setupUi() {
         binding.tvTargetSummary.text = request.clonePackageName
         binding.btnBack.setOnClickListener {
+            autoNavigateJob?.cancel()
             cloneJob?.cancel()
             finish()
         }
@@ -133,20 +150,42 @@ class CloneProgressActivity : AppCompatActivity() {
         binding.btnOverrideClone.setOnClickListener {
             startCloning(skipCompatibilityCheck = true)
         }
+        binding.btnDismissInstallStatus.setOnClickListener {
+            InstallProgressTracker.consumeTerminalState()
+        }
+        binding.btnOpenApp.setOnClickListener {
+            autoNavigateJob?.cancel()
+            val record = completedRecord ?: return@setOnClickListener
+            openInstalledClone(record.clonePackageName)
+        }
         binding.btnInstall.setOnClickListener {
             val record = completedRecord ?: return@setOnClickListener
             if (record.isSplitClone) {
-                SplitApkInstaller.installSplitClone(this, record)
+                SplitApkInstaller.installSplitClone(this, record, origin = InstallOrigin.CLONE_PROGRESS)
             } else {
                 val launched = ApkInstaller.installApk(this, record.apkFile)
                 if (launched) {
-                    InstallProgressTracker.onSingleApkInstallLaunched(record.clonePackageName, record.cloneName)
+                    InstallProgressTracker.onSingleApkInstallLaunched(
+                        record.clonePackageName,
+                        record.cloneName,
+                        origin = InstallOrigin.CLONE_PROGRESS
+                    )
                 }
             }
         }
 
         buildStepRows()
         observeInstallProgress()
+    }
+
+    private fun openInstalledClone(packageName: String) {
+        val launchIntent = packageManager.getLaunchIntentForPackage(packageName)
+        if (launchIntent != null) {
+            launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            startActivity(launchIntent)
+        } else {
+            Toast.makeText(this, R.string.err_open_clone_no_launcher, Toast.LENGTH_LONG).show()
+        }
     }
 
     private fun observeInstallProgress() {
@@ -157,17 +196,46 @@ class CloneProgressActivity : AppCompatActivity() {
                         binding.cardInstallProgress.visibility = View.GONE
                     }
                     is InstallProgressState.Installing -> {
+                        autoNavigateJob?.cancel()
                         binding.cardInstallProgress.visibility = View.VISIBLE
+                        binding.pbInstallProgress.visibility = View.VISIBLE
+                        binding.btnDismissInstallStatus.visibility = View.GONE
                         binding.tvInstallProgressText.text = if (state.cloneName.isNotBlank()) {
                             "${state.message} (${state.cloneName})"
                         } else {
                             state.message
                         }
                     }
-                    is InstallProgressState.Succeeded,
+                    is InstallProgressState.Succeeded -> {
+                        binding.cardInstallProgress.visibility = View.VISIBLE
+                        binding.pbInstallProgress.visibility = View.GONE
+                        binding.btnDismissInstallStatus.visibility = View.GONE
+                        binding.tvInstallProgressText.text = if (state.cloneName.isNotBlank()) {
+                            "${getString(R.string.status_installed_done)} (${state.cloneName})"
+                        } else {
+                            getString(R.string.status_installed_done)
+                        }
+                        binding.btnOpenApp.visibility = View.VISIBLE
+                        binding.tvSuccessNextStep.setText(R.string.clone_installed_redirecting)
+
+                        if (InstallProgressTracker.shouldAutoNavigateToResults(state.origin)) {
+                            autoNavigateJob?.cancel()
+                            autoNavigateJob = uiScope.launch {
+                                delay(1500L)
+                                InstallProgressTracker.consumeTerminalState()
+                                startActivity(ResultsActivity.createIntent(this@CloneProgressActivity))
+                                finish()
+                            }
+                        } else {
+                            InstallProgressTracker.consumeTerminalState()
+                        }
+                    }
                     is InstallProgressState.Failed -> {
-                        binding.cardInstallProgress.visibility = View.GONE
-                        InstallProgressTracker.consumeTerminalState()
+                        autoNavigateJob?.cancel()
+                        binding.cardInstallProgress.visibility = View.VISIBLE
+                        binding.pbInstallProgress.visibility = View.GONE
+                        binding.btnDismissInstallStatus.visibility = View.VISIBLE
+                        binding.tvInstallProgressText.text = state.message
                     }
                 }
             }
@@ -201,6 +269,7 @@ class CloneProgressActivity : AppCompatActivity() {
         binding.cardWarning.visibility = View.GONE
         binding.cardError.visibility = View.GONE
         binding.cardSuccessFolder.visibility = View.GONE
+        binding.btnOpenApp.visibility = View.GONE
         binding.btnInstall.visibility = View.GONE
         binding.btnRetry.visibility = View.GONE
         binding.btnOverrideClone.visibility = View.GONE
@@ -333,6 +402,11 @@ class CloneProgressActivity : AppCompatActivity() {
             )
         }
         binding.tvFileProgress.visibility = View.GONE
+        val alreadyInstalled = isPackageInstalledOnDevice(record.clonePackageName)
+        binding.btnOpenApp.visibility = if (alreadyInstalled) View.VISIBLE else View.GONE
+        binding.tvSuccessNextStep.setText(
+            if (alreadyInstalled) R.string.status_installed_done else R.string.clone_done_next_step
+        )
         binding.btnInstall.visibility = View.VISIBLE
     }
 

@@ -1,7 +1,19 @@
 # STATUS — Dualapps
-Terakhir diperbarui: 2026-11-26 15:53 WIB — Fase 13.2 (Pemisahan Aturan A vs Aturan B + Tombol Override) selesai
+Terakhir diperbarui: 2026-11-26 16:31 WIB — Fase 14 (Polish UX Pasca-Clone & Pemasangan) selesai
 
 ## Ringkasan fase terakhir
+- Fase: 14 — Perbaikan UX 5 poin pasca-clone & pemasangan (tanpa mengubah mesin clone/patch/signing/checker maupun desain neo-brutalism):
+  1. Kartu penyelesaian eksplisit setelah 7/7 di `CloneProgressActivity` (`Clone selesai dibuat ✓` + nama + package + ukuran/jumlah file + `Ketuk PASANG untuk memasang clone ini di perangkatmu.`).
+  2. Perbaikan transisi fase `InstallProgressTracker` (`PREPARING` → `WAITING_CONFIRMATION` `"Menunggu konfirmasi pemasangan…"` → `INSTALLING` `"Memasang…"` → `Succeeded` `"Terpasang ✓"` / `Failed` tanpa spinner macet) melalui kombinasi `onPause()`/`onResume()` saat kembali dari dialog sistem + `PackageInstaller.SessionCallback` (`onActiveChanged`/`onProgressChanged`) di `SplitApkInstaller`.
+  3. Status `"Terpasang ✓"` + tombol `"BUKA"` (`getLaunchIntentForPackage`) di `CloneProgressActivity` & setiap kartu `ResultsActivity` (tombol `PASANG` tetap tersedia untuk pasang ulang).
+  4. Navigasi otomatis (~1,5 detik setelah `Terpasang ✓`) dari `CloneProgressActivity` ke `ResultsActivity` bila pemasangan dipicu dari layar proses (`InstallOrigin.CLONE_PROGRESS`); bila dipicu dari `ResultsActivity` (`InstallOrigin.RESULTS`), pembaruan dilakukan di tempat tanpa navigasi.
+  5. Indikator loading (`layoutLoading` dengan spinner + `"Memuat daftar clone…"`) di `ResultsActivity` sebelum data `ClonedApksRepository` selesai dimuat (tanpa flash daftar kosong).
+- Test: **106/106 lulus** (102 test sebelumnya + 4 test baru Fase 14 di `PostCloneAndInstallUxTest`), 0 gagal, 0 dilewati (perintah: `.\gradlew.bat testDebugUnitTest assembleDebug` dengan `JAVA_HOME=C:\Users\Administrator\.jdks\jdk-17.0.21.1+2`)
+- Build debug: **BUILD SUCCESSFUL** — `app/build/outputs/apk/debug/app-debug.apk` (`10.228.044` byte / ~9,75 MB, `EXIT_CODE=0`, durasi total `54.48s`)
+- Commit: satu commit di branch `adil` — `"feat(phase14): polish post-clone and install UX"`
+- Audit mandiri Fase 14: 0 ketidaksesuaian pada kode/test/build; seluruh berkas mesin (`AxmlPatcher`, `ArscPatcher`, `AlignedZipWriter`, `ApkRebuilder`, `CloneIdentityPatcher`, `ApkSigningEngine`, `CloneCompatibilityChecker`, `DexStringReader`, `CloneUpdateChecker`, `ClonePipeline`, `AndroidManifest.xml`, `build.gradle.kts`) tidak disentuh; uji visual & alur pasca-clone di HP RMX1971 menunggu eksekusi Cak.
+
+## Ringkasan Fase 13.2 (sebelumnya)
 - Fase: 13.2 — Perbaikan false positive `CloneCompatibilityChecker` hasil diagnosis Fase 13.1:
   - Pemisahan keparahan di `CloneCompatibilityChecker.kt`: `CompatibilityRule.A` (`BLOCKING`, provider signature milik target sendiri) menggagalkan clone dengan `CloneError.INCOMPATIBLE_APP`; `CompatibilityRule.B` (`WARNING`, provider signature lintas-aplikasi seperti Muse → `katana.UserValuesProvider`) memperingatkan lewat kartu kuning `cardWarning` (`PERINGATAN KOMPATIBILITAS`) dan membiarkan clone lanjut normal; bila A+B muncul bersamaan, `BLOCKING` (A) menang.
   - Persistensi catatan di `ClonedApkRecord.compatibilityWarning` (JSON backward-compatible) dan ditampilkan di layar Hasil (`item_cloned_apk.xml` / `ClonedApksAdapter.kt`).
