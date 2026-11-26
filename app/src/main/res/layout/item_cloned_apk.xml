@@ -94,6 +94,60 @@
                 tools:text="23 Nov 2026, 08:35" />
         </LinearLayout>
 
+        <!-- Status pembaruan clone (Fase 11) -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/tvUpdateBadge"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="8dp"
+                android:background="@drawable/bg_neo_badge_split"
+                android:fontFamily="sans-serif-black"
+                android:paddingHorizontal="8dp"
+                android:paddingVertical="3dp"
+                android:text="@string/badge_update_available"
+                android:textColor="@color/accent_yellow"
+                android:textSize="10.5sp"
+                android:textStyle="bold"
+                android:visibility="gone"
+                tools:visibility="visible" />
+
+            <TextView
+                android:id="@+id/tvUpdateStatus"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:ellipsize="end"
+                android:maxLines="2"
+                android:textColor="@color/ink_muted"
+                android:textSize="11.5sp"
+                tools:text="Sumber v17.2 • clone dari v17.1" />
+        </LinearLayout>
+
+        <!-- Tombol PERBARUI (kuning bila pembaruan tersedia, nonaktif bila tidak) -->
+        <TextView
+            android:id="@+id/btnUpdate"
+            android:layout_width="match_parent"
+            android:layout_height="42dp"
+            android:layout_marginTop="10dp"
+            android:background="@drawable/bg_neo_button_yellow"
+            android:clickable="true"
+            android:focusable="true"
+            android:fontFamily="sans-serif-black"
+            android:gravity="center"
+            android:paddingEnd="4dp"
+            android:paddingBottom="4dp"
+            android:text="@string/action_update"
+            android:textColor="@color/ink_primary"
+            android:textSize="13sp"
+            android:textStyle="bold" />
+
         <!-- Baris tombol aksi: Pasang, Bagikan, Hapus -->
         <LinearLayout
             android:layout_width="match_parent"

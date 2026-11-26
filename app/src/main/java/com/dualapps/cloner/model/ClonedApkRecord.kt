@@ -16,7 +16,9 @@ data class ClonedApkRecord(
     val apkSizeBytes: Long,
     val createdAtMillis: Long,
     val splitApkPaths: List<String> = emptyList(),
-    val sourceVersionCode: Long = 0L
+    val sourceVersionCode: Long = 0L,
+    val sourceVersionName: String = "",
+    val customIconPath: String? = null
 ) {
     val apkFile: File get() = File(apkPath)
 
@@ -29,6 +31,7 @@ data class ClonedApkRecord(
 
     val isSplitClone: Boolean get() = splitApkPaths.isNotEmpty()
     val totalFileCount: Int get() = 1 + splitApkPaths.size
+    val hasCustomIcon: Boolean get() = !customIconPath.isNullOrBlank() && File(customIconPath).exists()
 
     fun toJsonString(): String {
         return buildString {
@@ -42,6 +45,10 @@ data class ClonedApkRecord(
             append("\"apkSizeBytes\":").append(apkSizeBytes).append(',')
             append("\"createdAtMillis\":").append(createdAtMillis).append(',')
             append("\"sourceVersionCode\":").append(sourceVersionCode).append(',')
+            append("\"sourceVersionName\":").append(quote(sourceVersionName)).append(',')
+            if (!customIconPath.isNullOrBlank()) {
+                append("\"customIconPath\":").append(quote(customIconPath)).append(',')
+            }
             append("\"splitApkPaths\":[")
             splitApkPaths.forEachIndexed { idx, path ->
                 if (idx > 0) append(',')
@@ -82,6 +89,8 @@ data class ClonedApkRecord(
             val apkSize = numbers["apkSizeBytes"] ?: 0L
             val createdAt = numbers["createdAtMillis"] ?: 0L
             val sourceVersion = numbers["sourceVersionCode"] ?: 0L
+            val sourceVerName = strings["sourceVersionName"].orEmpty()
+            val customIcon = strings["customIconPath"]?.takeIf { it.isNotBlank() }
             return ClonedApkRecord(
                 id = id,
                 cloneName = cloneName,
@@ -92,7 +101,9 @@ data class ClonedApkRecord(
                 apkSizeBytes = apkSize,
                 createdAtMillis = createdAt,
                 splitApkPaths = splitPaths,
-                sourceVersionCode = sourceVersion
+                sourceVersionCode = sourceVersion,
+                sourceVersionName = sourceVerName,
+                customIconPath = customIcon
             )
         }
 

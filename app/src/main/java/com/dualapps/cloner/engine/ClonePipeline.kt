@@ -59,7 +59,12 @@ data class CloneRequest(
     val clonePackageName: String,
     val customIconPngs: Map<String, ByteArray>? = null,
     val splitApkPaths: List<SplitApkFile> = emptyList(),
-    val sourceVersionCode: Long = 0L
+    val sourceVersionCode: Long = 0L,
+    val sourceVersionName: String = "",
+    val customIconSourcePath: String? = null,
+    val isUpdate: Boolean = false,
+    val existingRecordId: String? = null,
+    val previousSourceVersionCode: Long = 0L
 )
 
 /**
@@ -115,7 +120,16 @@ class ClonePipeline(
             if (request.clonePackageName.length > ArscPatcher.MAX_PACKAGE_NAME_LENGTH) {
                 throw CloneException(CloneError.PACKAGE_TOO_LONG)
             }
-            if (isPackageInstalled(request.clonePackageName)) {
+            if (request.isUpdate) {
+                if (request.previousSourceVersionCode <= 0L ||
+                    request.sourceVersionCode <= request.previousSourceVersionCode
+                ) {
+                    throw CloneException(
+                        CloneError.NO_UPDATE_AVAILABLE,
+                        "Versi sumber (${request.sourceVersionCode}) tidak lebih baru dari versi clone (${request.previousSourceVersionCode})."
+                    )
+                }
+            } else if (isPackageInstalled(request.clonePackageName)) {
                 throw CloneException(CloneError.PACKAGE_ALREADY_INSTALLED)
             }
 
@@ -356,13 +370,36 @@ class ClonePipeline(
                 throw CloneException(CloneError.ZIP_WRITE_FAILED, "Gagal membuat folder hasil clone.")
             }
             val now = System.currentTimeMillis()
-            val safeFileBase = "${request.clonePackageName}_$now"
+            val safeFileBase = if (request.isUpdate && !request.existingRecordId.isNullOrBlank()) {
+                request.existingRecordId
+            } else {
+                "${request.clonePackageName}_$now"
+            }
+
+            // Simpan salinan ikon custom permanen agar dapat dipakai ulang saat Perbarui Clone (Fase 11)
+            val persistedIconPath = persistCustomIconIfPresent(
+                outputDir = outputDir,
+                recordId = safeFileBase,
+                sourceIconPath = request.customIconSourcePath
+            )
 
             val record = if (!isMultiSplit) {
+                val stagingApk = File(outputDir, "${safeFileBase}_staging_$now.apk")
                 val finalApk = File(outputDir, "$safeFileBase.apk")
-                finalOutputCleanupTarget = finalApk
-                signedBase.copyTo(finalApk, overwrite = true)
+                finalOutputCleanupTarget = stagingApk
+                signedBase.copyTo(stagingApk, overwrite = true)
                 checkCancelled()
+                // Jika sebelumnya berupa split bundle folder dengan id yang sama, bersihkan setelah staging siap
+                val oldSplitDir = File(outputDir, safeFileBase)
+                if (request.isUpdate && oldSplitDir.exists() && oldSplitDir.isDirectory) {
+                    oldSplitDir.deleteRecursively()
+                }
+                if (finalApk.exists()) finalApk.delete()
+                if (!stagingApk.renameTo(finalApk)) {
+                    stagingApk.copyTo(finalApk, overwrite = true)
+                    stagingApk.delete()
+                }
+                finalOutputCleanupTarget = null
                 ClonedApkRecord(
                     id = safeFileBase,
                     cloneName = request.cloneName,
@@ -373,26 +410,46 @@ class ClonePipeline(
                     apkSizeBytes = finalApk.length(),
                     createdAtMillis = now,
                     splitApkPaths = emptyList(),
-                    sourceVersionCode = request.sourceVersionCode
+                    sourceVersionCode = request.sourceVersionCode,
+                    sourceVersionName = request.sourceVersionName,
+                    customIconPath = persistedIconPath
                 )
             } else {
+                val stagingDir = File(outputDir, "${safeFileBase}_staging_$now")
                 val splitBundleDir = File(outputDir, safeFileBase)
-                finalOutputCleanupTarget = splitBundleDir
-                if (!splitBundleDir.mkdirs()) {
+                finalOutputCleanupTarget = stagingDir
+                if (!stagingDir.mkdirs()) {
                     throw CloneException(CloneError.ZIP_WRITE_FAILED, "Gagal membuat folder hasil split clone.")
                 }
-                val finalBase = File(splitBundleDir, "base.apk")
-                signedBase.copyTo(finalBase, overwrite = true)
-                var totalBytes = finalBase.length()
+                val stagingBase = File(stagingDir, "base.apk")
+                signedBase.copyTo(stagingBase, overwrite = true)
+                var totalBytes = stagingBase.length()
 
-                val finalSplitPaths = mutableListOf<String>()
+                val splitFileNames = mutableListOf<String>()
                 for ((safeName, signedSplit) in signedSplits) {
                     checkCancelled()
-                    val destSplit = File(splitBundleDir, safeName)
+                    val destSplit = File(stagingDir, safeName)
                     signedSplit.copyTo(destSplit, overwrite = true)
                     totalBytes += destSplit.length()
-                    finalSplitPaths.add(destSplit.absolutePath)
+                    splitFileNames.add(safeName)
                 }
+
+                // Swap atomik setelah seluruh berkas staging selesai disalin
+                val oldSingleApk = File(outputDir, "$safeFileBase.apk")
+                if (request.isUpdate && oldSingleApk.exists() && oldSingleApk.isFile) {
+                    oldSingleApk.delete()
+                }
+                if (splitBundleDir.exists()) {
+                    splitBundleDir.deleteRecursively()
+                }
+                if (!stagingDir.renameTo(splitBundleDir)) {
+                    stagingDir.copyRecursively(splitBundleDir, overwrite = true)
+                    stagingDir.deleteRecursively()
+                }
+                finalOutputCleanupTarget = null
+
+                val finalBase = File(splitBundleDir, "base.apk")
+                val finalSplitPaths = splitFileNames.map { File(splitBundleDir, it).absolutePath }
                 ClonedApkRecord(
                     id = safeFileBase,
                     cloneName = request.cloneName,
@@ -403,13 +460,14 @@ class ClonePipeline(
                     apkSizeBytes = totalBytes,
                     createdAtMillis = now,
                     splitApkPaths = finalSplitPaths,
-                    sourceVersionCode = request.sourceVersionCode
+                    sourceVersionCode = request.sourceVersionCode,
+                    sourceVersionName = request.sourceVersionName,
+                    customIconPath = persistedIconPath
                 )
             }
 
             val metaFile = File(outputDir, "$safeFileBase.json")
             metaFile.writeText(record.toJsonString(), Charsets.UTF_8)
-            finalOutputCleanupTarget = null
 
             record
         } catch (e: CloneException) {
@@ -438,6 +496,23 @@ class ClonePipeline(
                 .replace(Regex("[^A-Za-z0-9._-]"), "_")
                 .ifEmpty { "part_${index + 1}" }
             return "split_$cleaned.apk"
+        }
+
+        private fun persistCustomIconIfPresent(
+            outputDir: File,
+            recordId: String,
+            sourceIconPath: String?
+        ): String? {
+            if (sourceIconPath.isNullOrBlank()) return null
+            val src = File(sourceIconPath)
+            if (!src.exists() || !src.isFile) return null
+            val iconsDir = File(outputDir, "icons")
+            if (!iconsDir.exists()) iconsDir.mkdirs()
+            val dest = File(iconsDir, "$recordId.png")
+            if (src.absolutePath != dest.absolutePath) {
+                runCatching { src.copyTo(dest, overwrite = true) }
+            }
+            return if (dest.exists()) dest.absolutePath else src.absolutePath
         }
 
         /**

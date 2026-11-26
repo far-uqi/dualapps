@@ -11,17 +11,32 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.dualapps.cloner.R
 import com.dualapps.cloner.data.ClonedApksRepository
+import com.dualapps.cloner.data.InstalledAppsRepository
 import com.dualapps.cloner.databinding.ActivityResultsBinding
 import com.dualapps.cloner.databinding.DialogConfirmDeleteBinding
+import com.dualapps.cloner.engine.CloneUpdateChecker
+import com.dualapps.cloner.engine.InstalledPackageVersion
 import com.dualapps.cloner.model.ClonedApkRecord
+import com.dualapps.cloner.model.InstalledApp
 import com.dualapps.cloner.util.ApkInstaller
 import com.dualapps.cloner.util.SplitApkInstaller
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class ResultsActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityResultsBinding
     private lateinit var repository: ClonedApksRepository
+    private lateinit var installedAppsRepository: InstalledAppsRepository
     private lateinit var adapter: ClonedApksAdapter
+
+    private val uiScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private var refreshJob: Job? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -29,10 +44,12 @@ class ResultsActivity : AppCompatActivity() {
         setContentView(binding.root)
 
         repository = ClonedApksRepository(filesDir)
+        installedAppsRepository = InstalledAppsRepository(packageManager)
         adapter = ClonedApksAdapter(
             onInstallClick = ::installRecord,
             onShareClick = ::shareRecord,
-            onDeleteClick = ::confirmDeleteRecord
+            onDeleteClick = ::confirmDeleteRecord,
+            onUpdateClick = ::updateRecord
         )
 
         setupUi()
@@ -41,6 +58,11 @@ class ResultsActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         refreshResults()
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        uiScope.cancel()
     }
 
     private fun setupUi() {
@@ -53,13 +75,53 @@ class ResultsActivity : AppCompatActivity() {
     }
 
     private fun refreshResults() {
-        val records = repository.loadAll()
-        adapter.submitList(records)
-        binding.tvResultsCount.text = getString(R.string.section_results_count, records.size)
+        refreshJob?.cancel()
+        refreshJob = uiScope.launch {
+            val items = withContext(Dispatchers.IO) {
+                val records = repository.loadAll()
+                val installedByPkg = installedAppsRepository.loadInstalledApps()
+                    .associateBy { it.packageName }
 
-        val isEmpty = records.isEmpty()
-        binding.layoutEmpty.visibility = if (isEmpty) View.VISIBLE else View.GONE
-        binding.rvResults.visibility = if (isEmpty) View.GONE else View.VISIBLE
+                records.map { record ->
+                    val sourceApp = installedByPkg[record.originalPackageName]
+                    val sourceVer = sourceApp?.let {
+                        InstalledPackageVersion(
+                            packageName = it.packageName,
+                            versionCode = it.versionCode,
+                            versionName = it.versionName.orEmpty()
+                        )
+                    }
+                    val isCloneInstalled = installedByPkg.containsKey(record.clonePackageName)
+                    val updateStatus = CloneUpdateChecker.check(
+                        record = record,
+                        installedSource = sourceVer,
+                        isCloneInstalled = isCloneInstalled
+                    )
+                    ClonedResultItem(
+                        record = record,
+                        updateStatus = updateStatus,
+                        installedSourceApp = sourceApp
+                    )
+                }
+            }
+
+            adapter.submitList(items)
+            binding.tvResultsCount.text = getString(R.string.section_results_count, items.size)
+
+            val isEmpty = items.isEmpty()
+            binding.layoutEmpty.visibility = if (isEmpty) View.VISIBLE else View.GONE
+            binding.rvResults.visibility = if (isEmpty) View.GONE else View.VISIBLE
+        }
+    }
+
+    private fun updateRecord(record: ClonedApkRecord, sourceApp: InstalledApp) {
+        startActivity(
+            CloneProgressActivity.createUpdateIntent(
+                context = this,
+                record = record,
+                sourceApp = sourceApp
+            )
+        )
     }
 
     private fun installRecord(record: ClonedApkRecord) {

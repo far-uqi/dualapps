@@ -31,6 +31,7 @@ class ConfigureCloneActivity : AppCompatActivity() {
     private lateinit var sourceDir: String
     private var sourceSizeBytes: Long = 0L
     private var sourceVersionCode: Long = 0L
+    private var sourceVersionName: String = ""
     private var isSplitApk: Boolean = false
     private var isFromApkFile: Boolean = false
     private var splitFiles: List<SplitApkFile> = emptyList()
@@ -56,6 +57,7 @@ class ConfigureCloneActivity : AppCompatActivity() {
         sourceDir = intent.getStringExtra(EXTRA_SOURCE_DIR).orEmpty()
         sourceSizeBytes = intent.getLongExtra(EXTRA_APK_SIZE, 0L)
         sourceVersionCode = intent.getLongExtra(EXTRA_VERSION_CODE, 0L)
+        sourceVersionName = intent.getStringExtra(EXTRA_VERSION_NAME).orEmpty()
         isSplitApk = intent.getBooleanExtra(EXTRA_IS_SPLIT, false)
         isFromApkFile = intent.getBooleanExtra(EXTRA_IS_FROM_APK_FILE, false)
         splitFiles = readSplitFilesFromIntent()
@@ -156,7 +158,8 @@ class ConfigureCloneActivity : AppCompatActivity() {
                     clonePackageName = clonePackage,
                     customIconPath = customIconFile?.absolutePath,
                     splitFiles = splitFiles,
-                    sourceVersionCode = sourceVersionCode
+                    sourceVersionCode = sourceVersionCode,
+                    sourceVersionName = sourceVersionName
                 )
             )
         }
@@ -245,6 +248,7 @@ class ConfigureCloneActivity : AppCompatActivity() {
         private const val EXTRA_SOURCE_DIR = "extra_source_dir"
         private const val EXTRA_APK_SIZE = "extra_apk_size"
         private const val EXTRA_VERSION_CODE = "extra_version_code"
+        private const val EXTRA_VERSION_NAME = "extra_version_name"
         private const val EXTRA_IS_SPLIT = "extra_is_split"
         private const val EXTRA_IS_FROM_APK_FILE = "extra_is_from_apk_file"
         private const val EXTRA_SPLIT_NAMES = "extra_split_names"
@@ -262,6 +266,7 @@ class ConfigureCloneActivity : AppCompatActivity() {
                 putExtra(EXTRA_SOURCE_DIR, app.sourceDir)
                 putExtra(EXTRA_APK_SIZE, app.apkSizeBytes)
                 putExtra(EXTRA_VERSION_CODE, app.versionCode)
+                putExtra(EXTRA_VERSION_NAME, app.versionName.orEmpty())
                 putExtra(EXTRA_IS_SPLIT, app.isSplitApk)
                 putExtra(EXTRA_IS_FROM_APK_FILE, isFromApkFile)
                 if (app.splitFiles.isNotEmpty()) {

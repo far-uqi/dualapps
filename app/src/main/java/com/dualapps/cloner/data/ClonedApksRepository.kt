@@ -40,6 +40,12 @@ class ClonedApksRepository(private val filesDir: File) {
         }
         val metaFile = File(clonedApksDir, "${record.id}.json")
         val metaDeleted = !metaFile.exists() || metaFile.delete()
+        record.customIconPath?.let { iconPath ->
+            val iconFile = File(iconPath)
+            if (iconFile.exists()) {
+                runCatching { iconFile.delete() }
+            }
+        }
         return allApksDeleted && metaDeleted
     }
 

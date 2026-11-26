@@ -6,6 +6,7 @@
     <string name="headline_pick_app">Clone now.\nUse anytime.</string>
     <string name="headline_configure">Make it yours.</string>
     <string name="headline_cloning">Cloning…\nHang tight.</string>
+    <string name="headline_updating">Memperbarui…\nTunggu sebentar.</string>
     <string name="headline_results">Done.\nIt\'s yours.</string>
 
     <!-- Layar Pilih Aplikasi (Bahasa Indonesia) -->
@@ -93,6 +94,13 @@
     <string name="delete_confirm_message">Berkas APK untuk %1$s (%2$s) akan dihapus dari penyimpanan Dualapps. Aplikasi yang sudah terpasang di perangkat tidak ikut terhapus.</string>
     <string name="msg_result_deleted">Hasil clone berhasil dihapus.</string>
     <string name="err_result_delete_failed">Gagal menghapus berkas hasil clone.</string>
+    <string name="badge_update_available">Pembaruan tersedia</string>
+    <string name="action_update">PERBARUI</string>
+    <string name="update_version_compare_format">Sumber v%1$s • clone dari v%2$s</string>
+    <string name="update_status_up_to_date">Sudah versi terbaru</string>
+    <string name="update_status_source_missing">Aplikasi sumber tidak terpasang</string>
+    <string name="update_status_clone_missing">Clone belum terpasang di perangkat</string>
+    <string name="update_status_unknown_version">Versi sumber tidak tercatat</string>
 
     <!-- Panduan Play Protect Statis -->
     <string name="play_protect_banner_title">Diblokir Play Protect saat memasang?</string>

@@ -21,6 +21,7 @@ import com.dualapps.cloner.engine.DeviceKeystoreManager
 import com.dualapps.cloner.model.CloneError
 import com.dualapps.cloner.model.CloneException
 import com.dualapps.cloner.model.ClonedApkRecord
+import com.dualapps.cloner.model.InstalledApp
 import com.dualapps.cloner.model.SplitApkFile
 import com.dualapps.cloner.util.ApkInstaller
 import com.dualapps.cloner.util.FormatUtils
@@ -63,6 +64,7 @@ class CloneProgressActivity : AppCompatActivity() {
 
         customIconPath = intent.getStringExtra(EXTRA_CUSTOM_ICON_PATH)
         val splitFiles = readSplitFilesFromIntent()
+        val isUpdate = intent.getBooleanExtra(EXTRA_IS_UPDATE, false)
         request = CloneRequest(
             sourceApkPath = sourceDir,
             isSplitApk = intent.getBooleanExtra(EXTRA_IS_SPLIT, false),
@@ -71,7 +73,12 @@ class CloneProgressActivity : AppCompatActivity() {
             cloneName = intent.getStringExtra(EXTRA_CLONE_NAME).orEmpty(),
             clonePackageName = clonePkg,
             splitApkPaths = splitFiles,
-            sourceVersionCode = intent.getLongExtra(EXTRA_VERSION_CODE, 0L)
+            sourceVersionCode = intent.getLongExtra(EXTRA_VERSION_CODE, 0L),
+            sourceVersionName = intent.getStringExtra(EXTRA_VERSION_NAME).orEmpty(),
+            customIconSourcePath = customIconPath,
+            isUpdate = isUpdate,
+            existingRecordId = intent.getStringExtra(EXTRA_EXISTING_RECORD_ID),
+            previousSourceVersionCode = intent.getLongExtra(EXTRA_PREVIOUS_VERSION_CODE, 0L)
         )
 
         setupUi()
@@ -80,7 +87,8 @@ class CloneProgressActivity : AppCompatActivity() {
             clonePackageName = request.clonePackageName,
             savedRecordJson = savedInstanceState?.getString(STATE_COMPLETED_RECORD_JSON),
             existingRecords = ClonedApksRepository(filesDir).loadAll(),
-            isExplicitRetry = false
+            isExplicitRetry = false,
+            isUpdateRun = request.isUpdate
         )
         when (startAction) {
             is CloneStartAction.ShowCompleted -> showRestoredSuccess(startAction.record)
@@ -142,7 +150,9 @@ class CloneProgressActivity : AppCompatActivity() {
         completedStepsCount = 0
         completedRecord = null
         currentActiveStep = CloneStep.VALIDATE_SOURCE
-        binding.tvHeadline.setText(R.string.headline_cloning)
+        binding.tvHeadline.setText(
+            if (request.isUpdate) R.string.headline_updating else R.string.headline_cloning
+        )
         binding.progressBar.max = CloneStep.entries.size
         binding.progressBar.progress = 0
         binding.tvProgressCount.text = getString(R.string.progress_count_format, 0, CloneStep.entries.size)
@@ -348,6 +358,10 @@ class CloneProgressActivity : AppCompatActivity() {
         private const val EXTRA_CLONE_PACKAGE = "extra_clone_package"
         private const val EXTRA_CUSTOM_ICON_PATH = "extra_custom_icon_path"
         private const val EXTRA_VERSION_CODE = "extra_version_code"
+        private const val EXTRA_VERSION_NAME = "extra_version_name"
+        private const val EXTRA_IS_UPDATE = "extra_is_update"
+        private const val EXTRA_EXISTING_RECORD_ID = "extra_existing_record_id"
+        private const val EXTRA_PREVIOUS_VERSION_CODE = "extra_previous_version_code"
         private const val EXTRA_SPLIT_NAMES = "extra_split_names"
         private const val EXTRA_SPLIT_PATHS = "extra_split_paths"
         private const val EXTRA_SPLIT_SIZES = "extra_split_sizes"
@@ -363,7 +377,8 @@ class CloneProgressActivity : AppCompatActivity() {
             clonePackageName: String,
             customIconPath: String? = null,
             splitFiles: List<SplitApkFile> = emptyList(),
-            sourceVersionCode: Long = 0L
+            sourceVersionCode: Long = 0L,
+            sourceVersionName: String = ""
         ): Intent {
             return Intent(context, CloneProgressActivity::class.java).apply {
                 putExtra(EXTRA_SOURCE_DIR, sourceDir)
@@ -373,6 +388,7 @@ class CloneProgressActivity : AppCompatActivity() {
                 putExtra(EXTRA_CLONE_NAME, cloneName)
                 putExtra(EXTRA_CLONE_PACKAGE, clonePackageName)
                 putExtra(EXTRA_VERSION_CODE, sourceVersionCode)
+                putExtra(EXTRA_VERSION_NAME, sourceVersionName)
                 if (!customIconPath.isNullOrBlank()) {
                     putExtra(EXTRA_CUSTOM_ICON_PATH, customIconPath)
                 }
@@ -381,6 +397,30 @@ class CloneProgressActivity : AppCompatActivity() {
                     putStringArrayListExtra(EXTRA_SPLIT_PATHS, ArrayList(splitFiles.map { it.path }))
                     putExtra(EXTRA_SPLIT_SIZES, splitFiles.map { it.sizeBytes }.toLongArray())
                 }
+            }
+        }
+
+        fun createUpdateIntent(
+            context: Context,
+            record: ClonedApkRecord,
+            sourceApp: InstalledApp
+        ): Intent {
+            return createIntent(
+                context = context,
+                sourceDir = sourceApp.sourceDir,
+                isSplitApk = sourceApp.isSplitApk,
+                originalAppName = sourceApp.label,
+                originalPackageName = sourceApp.packageName,
+                cloneName = record.cloneName,
+                clonePackageName = record.clonePackageName,
+                customIconPath = record.customIconPath?.takeIf { File(it).exists() },
+                splitFiles = sourceApp.splitFiles,
+                sourceVersionCode = sourceApp.versionCode,
+                sourceVersionName = sourceApp.versionName.orEmpty()
+            ).apply {
+                putExtra(EXTRA_IS_UPDATE, true)
+                putExtra(EXTRA_EXISTING_RECORD_ID, record.id)
+                putExtra(EXTRA_PREVIOUS_VERSION_CODE, record.sourceVersionCode)
             }
         }
     }

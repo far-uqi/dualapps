@@ -53,6 +53,9 @@ enum class CloneError(val userMessage: String) {
     SESSION_FAILED(
         "Gagal membuat atau menyelesaikan sesi pemasangan PackageInstaller. Pastikan Dualapps tetap terbuka di layar depan lalu coba lagi."
     ),
+    NO_UPDATE_AVAILABLE(
+        "Aplikasi sumber belum memiliki versi yang lebih baru dari clone ini. Perbarui aplikasi sumber terlebih dahulu sebelum memperbarui clone."
+    ),
     CANCELLED(
         "Proses clone dibatalkan oleh pengguna."
     ),

@@ -20,7 +20,8 @@ object CloneProgressStartResolver {
         clonePackageName: String,
         savedRecordJson: String?,
         existingRecords: List<ClonedApkRecord>,
-        isExplicitRetry: Boolean = false
+        isExplicitRetry: Boolean = false,
+        isUpdateRun: Boolean = false
     ): CloneStartAction {
         if (isExplicitRetry) {
             return CloneStartAction.RunPipeline
@@ -36,6 +37,11 @@ object CloneProgressStartResolver {
             ) {
                 return CloneStartAction.ShowCompleted(restored)
             }
+        }
+
+        // Pada mode Perbarui (awal mulai tanpa saved state), jangan langsung tampilkan record lama
+        if (isUpdateRun) {
+            return CloneStartAction.RunPipeline
         }
 
         // Fallback: periksa record di ClonedApksRepository untuk clonePackageName yang sama
