@@ -90,6 +90,7 @@ class ResultsActivity : AppCompatActivity() {
             InstallProgressTracker.consumeTerminalState()
         }
         binding.rvResults.layoutManager = LinearLayoutManager(this)
+        binding.rvResults.itemAnimator = null
         binding.rvResults.adapter = adapter
         applyLoadState(ResultsLoadState.Loading)
         observeInstallProgress()
@@ -197,8 +198,10 @@ class ResultsActivity : AppCompatActivity() {
             }
 
             hasLoadedOnce = true
-            adapter.submitList(items)
             binding.tvResultsCount.text = getString(R.string.section_results_count, items.size)
+            // Sembunyikan indikator loading SEBELUM memperbarui & menampilkan daftar agar tidak ada frame tumpang tindih
+            binding.layoutLoading.visibility = View.GONE
+            adapter.submitList(items)
             applyLoadState(
                 InstallProgressTracker.resolveResultsLoadState(
                     isLoading = false,

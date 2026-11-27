@@ -62,6 +62,7 @@
     <string name="clone_done_next_step">Tap INSTALL to install this clone on your device.</string>
     <string name="clone_installed_redirecting">Installed ✓ — Opening Clone Results…</string>
     <string name="action_open_app">OPEN</string>
+    <string name="action_view_results">VIEW RESULTS</string>
     <string name="action_dismiss">CLOSE</string>
     <string name="badge_installed">Installed ✓</string>
     <string name="err_open_clone_no_launcher">This cloned app is installed, but it does not have a launcher shortcut that can be opened directly.</string>

@@ -206,9 +206,11 @@ object InstallProgressTracker {
         }
     }
 
-    fun shouldAutoNavigateToResults(origin: InstallOrigin): Boolean {
-        return origin == InstallOrigin.CLONE_PROGRESS
-    }
+    /**
+     * Fase 16: navigasi otomatis ke Clone Results dibatalkan; setelah pemasangan berhasil,
+     * layar proses tetap menampilkan status "Installed ✓" + tombol OPEN + VIEW RESULTS manual.
+     */
+    fun shouldAutoNavigateToResults(origin: InstallOrigin): Boolean = false
 
     fun resolveResultsLoadState(isLoading: Boolean, itemCount: Int): ResultsLoadState {
         return when {

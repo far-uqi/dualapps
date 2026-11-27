@@ -57,10 +57,7 @@ class ClonedApksAdapter(
             val ctx = binding.root.context
             val record = item.record
 
-            binding.tvFolderTab.setBackgroundResource(
-                if (position % 2 == 0) R.drawable.bg_neo_folder_tab_teal
-                else R.drawable.bg_neo_folder_tab_purple
-            )
+            binding.tvFolderTab.setBackgroundResource(R.drawable.bg_neo_folder_tab_purple)
             binding.tvFolderTab.text = if (record.sourceOrigin == "APKS" || record.sourceOrigin == "XAPK") {
                 ctx.getString(R.string.tab_clone_result_origin_format, record.sourceOrigin)
             } else {

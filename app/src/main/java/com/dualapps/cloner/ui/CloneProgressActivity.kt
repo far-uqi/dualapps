@@ -37,7 +37,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -47,7 +46,6 @@ class CloneProgressActivity : AppCompatActivity() {
     private lateinit var binding: ActivityCloneProgressBinding
     private val uiScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var cloneJob: Job? = null
-    private var autoNavigateJob: Job? = null
 
     private lateinit var request: CloneRequest
     private var customIconPath: String? = null
@@ -129,7 +127,6 @@ class CloneProgressActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        autoNavigateJob?.cancel()
         cloneJob?.cancel()
         uiScope.cancel()
     }
@@ -137,7 +134,6 @@ class CloneProgressActivity : AppCompatActivity() {
     private fun setupUi() {
         binding.tvTargetSummary.text = request.clonePackageName
         binding.btnBack.setOnClickListener {
-            autoNavigateJob?.cancel()
             cloneJob?.cancel()
             finish()
         }
@@ -154,9 +150,13 @@ class CloneProgressActivity : AppCompatActivity() {
             InstallProgressTracker.consumeTerminalState()
         }
         binding.btnOpenApp.setOnClickListener {
-            autoNavigateJob?.cancel()
             val record = completedRecord ?: return@setOnClickListener
             openInstalledClone(record.clonePackageName)
+        }
+        binding.btnViewResults.setOnClickListener {
+            InstallProgressTracker.consumeTerminalState()
+            startActivity(ResultsActivity.createIntent(this))
+            finish()
         }
         binding.btnInstall.setOnClickListener {
             val record = completedRecord ?: return@setOnClickListener
@@ -196,7 +196,6 @@ class CloneProgressActivity : AppCompatActivity() {
                         binding.cardInstallProgress.visibility = View.GONE
                     }
                     is InstallProgressState.Installing -> {
-                        autoNavigateJob?.cancel()
                         binding.cardInstallProgress.visibility = View.VISIBLE
                         binding.pbInstallProgress.visibility = View.VISIBLE
                         binding.btnDismissInstallStatus.visibility = View.GONE
@@ -207,6 +206,7 @@ class CloneProgressActivity : AppCompatActivity() {
                         }
                     }
                     is InstallProgressState.Succeeded -> {
+                        // Tetap di layar proses (tanpa navigasi otomatis) agar tombol OPEN bisa langsung diketuk
                         binding.cardInstallProgress.visibility = View.VISIBLE
                         binding.pbInstallProgress.visibility = View.GONE
                         binding.btnDismissInstallStatus.visibility = View.GONE
@@ -216,22 +216,10 @@ class CloneProgressActivity : AppCompatActivity() {
                             getString(R.string.status_installed_done)
                         }
                         binding.btnOpenApp.visibility = View.VISIBLE
-                        binding.tvSuccessNextStep.setText(R.string.clone_installed_redirecting)
-
-                        if (InstallProgressTracker.shouldAutoNavigateToResults(state.origin)) {
-                            autoNavigateJob?.cancel()
-                            autoNavigateJob = uiScope.launch {
-                                delay(1500L)
-                                InstallProgressTracker.consumeTerminalState()
-                                startActivity(ResultsActivity.createIntent(this@CloneProgressActivity))
-                                finish()
-                            }
-                        } else {
-                            InstallProgressTracker.consumeTerminalState()
-                        }
+                        binding.btnViewResults.visibility = View.VISIBLE
+                        binding.tvSuccessNextStep.setText(R.string.status_installed_done)
                     }
                     is InstallProgressState.Failed -> {
-                        autoNavigateJob?.cancel()
                         binding.cardInstallProgress.visibility = View.VISIBLE
                         binding.pbInstallProgress.visibility = View.GONE
                         binding.btnDismissInstallStatus.visibility = View.VISIBLE
@@ -271,6 +259,7 @@ class CloneProgressActivity : AppCompatActivity() {
         binding.cardSuccessFolder.visibility = View.GONE
         binding.btnOpenApp.visibility = View.GONE
         binding.btnInstall.visibility = View.GONE
+        binding.btnViewResults.visibility = View.GONE
         binding.btnRetry.visibility = View.GONE
         binding.btnOverrideClone.visibility = View.GONE
         binding.btnCancel.visibility = View.VISIBLE
@@ -408,6 +397,7 @@ class CloneProgressActivity : AppCompatActivity() {
             if (alreadyInstalled) R.string.status_installed_done else R.string.clone_done_next_step
         )
         binding.btnInstall.visibility = View.VISIBLE
+        binding.btnViewResults.visibility = View.VISIBLE
     }
 
     private fun onCloneFailure(error: CloneError, detail: String?) {

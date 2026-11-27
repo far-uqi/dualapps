@@ -1,7 +1,17 @@
 # STATUS — Dualapps
-Terakhir diperbarui: 2026-11-27 11:26 WIB — Fase 15 (Tab Installed Pill + Perbaikan Tombol OPEN + Seluruh UI Bahasa Inggris) selesai
+Terakhir diperbarui: 2026-11-27 13:01 WIB — Fase 16 (Samakan Gaya Tab + Hapus Navigasi Otomatis) selesai
 
 ## Ringkasan fase terakhir
+- Fase: 16 — Penyeragaman gaya ketiga tab note label + pembatalan navigasi otomatis pasca-pasang + perbaikan transisi loading Clone Results:
+  1. Ketiga tab kini memakai **satu bentuk note label yang sama persis** (folder tab sudut atas 10dp, sudut bawah 0dp, border 2.5dp, menempel langsung ke tepi atas kartu via `layout_marginBottom="-2.5dp"` pada container baris tab): `CLONE RESULT` ungu (`bg_neo_folder_tab_purple.xml`), `Installed ✓` teal (`bg_neo_folder_tab_teal.xml`) tepat di kanan `CLONE RESULT` bersebelahan tanpa celah spacer, dan `COMPATIBILITY WARNING` kuning (`bg_neo_folder_tab_yellow.xml`). Drawable pill lama `bg_neo_tab_installed_pill.xml` dihapus.
+  2. Navigasi otomatis `delay(1500L)` ke `ResultsActivity` dihapus dari `CloneProgressActivity` (`InstallProgressTracker.shouldAutoNavigateToResults` selalu `false`); setelah pemasangan berhasil, layar proses tetap menampilkan `"Installed ✓"` + tombol `OPEN` + `INSTALL` + tombol sekunder manual **`VIEW RESULTS`** (`btnViewResults`).
+  3. Transisi loading → daftar di `ResultsActivity` diperbaiki agar `layoutLoading` selalu disembunyikan (`View.GONE`) **sebelum** `adapter.submitList(items)` dipanggil dan `rvResults.itemAnimator = null` sehingga tidak ada frame tumpang tindih.
+- Test: **114/114 lulus** (109 test sebelumnya + 5 test baru Fase 16 di `Phase16TabAndNoAutoNavTest`), 0 gagal, 0 dilewati (perintah: `.\gradlew.bat testDebugUnitTest assembleDebug` dengan `JAVA_HOME=C:\Users\Administrator\.jdks\jdk-17.0.21.1+2`)
+- Build debug: **BUILD SUCCESSFUL** — `app/build/outputs/apk/debug/app-debug.apk` (`10.253.588` byte / ~9,78 MB, `EXIT_CODE=0`, durasi total `136.71s`)
+- Commit: satu commit di branch `adil` — `"fix(phase16): unify tab style and remove auto-navigation"`
+- Audit mandiri Fase 16: 0 ketidaksesuaian pada kode/test/build; berkas mesin (`AxmlPatcher`, `ArscPatcher`, `AlignedZipWriter`, `ApkRebuilder`, `CloneIdentityPatcher`, `ApkSigningEngine`, `CloneCompatibilityChecker`, `DexStringReader`, `CloneUpdateChecker`, `ClonePipeline`, `AndroidManifest.xml`, `build.gradle.kts`) tidak disentuh; tampilan visual tab, layar proses tanpa loncat otomatis, dan transisi loading bersih menunggu verifikasi perangkat Cak di RMX1971.
+
+## Ringkasan Fase 15 (sebelumnya)
 - Fase: 15 — Polish tampilan & konversi bahasa penuh ke Bahasa Inggris (tanpa mengubah logika mesin clone/patch/signing/checker):
   1. Badge `"Installed ✓"` dipindahkan dari pojok kanan-atas dalam kartu menjadi **tab pill membulat penuh** (`tvInstalledTab` dengan `bg_neo_tab_installed_pill.xml`: radius `999dp`, border `2.5dp`, shadow `4dp`, teal `#1ED3A6`) di atas kartu sejajar baris tab folder `CLONE RESULT` (`item_cloned_apk.xml`, `ClonedApksAdapter.kt`); badge dalam kartu `tvInstalledBadge` dihapus.
   2. Tombol `OPEN` (`btnOpen` di `item_cloned_apk.xml` & `btnOpenApp` di `activity_clone_progress.xml`) diperbaiki dari sebelumnya keliru memakai drawable tab folder `bg_neo_folder_tab_teal` (sudut bawah lurus tanpa shadow) menjadi drawable tombol neo-brutalism standar baru `bg_neo_button_teal.xml` (radius `12dp` di keempat sudut, border `2.5dp`, hard shadow `4dp`, `paddingEnd`/`paddingBottom` `4dp`, identik struktur dengan `bg_neo_button_yellow` / `bg_neo_button_white`).

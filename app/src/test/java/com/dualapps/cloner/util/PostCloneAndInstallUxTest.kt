@@ -97,8 +97,8 @@ class PostCloneAndInstallUxTest {
     }
 
     @Test
-    fun autoNavigateToResultsOnlyWhenInstallTriggeredFromCloneProgress() {
-        assertTrue(InstallProgressTracker.shouldAutoNavigateToResults(InstallOrigin.CLONE_PROGRESS))
+    fun autoNavigateToResultsIsDisabledAfterInstallInPhase16() {
+        assertFalse(InstallProgressTracker.shouldAutoNavigateToResults(InstallOrigin.CLONE_PROGRESS))
         assertFalse(InstallProgressTracker.shouldAutoNavigateToResults(InstallOrigin.RESULTS))
     }
 

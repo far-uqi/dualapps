@@ -24,14 +24,14 @@ class Phase15UiAndEnglishGuardTest {
         val appDir = resolveAppDir()
         val itemXml = File(appDir, "src/main/res/layout/item_cloned_apk.xml").readText(Charsets.UTF_8)
 
-        // Tab "Installed ✓" harus ada di atas kartu dengan bentuk pill berbeda dari folder tab
+        // Tab "Installed ✓" harus ada di atas kartu memakai bentuk note label yang sama (teal)
         assertTrue(
             "item_cloned_apk.xml must define tvInstalledTab above the card",
             itemXml.contains("android:id=\"@+id/tvInstalledTab\"")
         )
         assertTrue(
-            "tvInstalledTab must use distinct pill drawable bg_neo_tab_installed_pill",
-            itemXml.contains("android:background=\"@drawable/bg_neo_tab_installed_pill\"")
+            "tvInstalledTab must use unified folder tab drawable bg_neo_folder_tab_teal",
+            itemXml.contains("android:background=\"@drawable/bg_neo_folder_tab_teal\"")
         )
         // Badge lama di dalam kartu tidak boleh ada lagi
         assertFalse(
@@ -42,12 +42,6 @@ class Phase15UiAndEnglishGuardTest {
         val tabIndex = itemXml.indexOf("@+id/tvInstalledTab")
         val cardIndex = itemXml.indexOf("@drawable/bg_neo_card")
         assertTrue("tvInstalledTab must appear above bg_neo_card", tabIndex in 0 until cardIndex)
-
-        // Drawable pill harus membulat penuh (radius 999dp) + border 2.5dp + shadow 4dp
-        val pillXml = File(appDir, "src/main/res/drawable/bg_neo_tab_installed_pill.xml").readText(Charsets.UTF_8)
-        assertTrue(pillXml.contains("android:radius=\"999dp\""))
-        assertTrue(pillXml.contains("android:width=\"2.5dp\""))
-        assertTrue(pillXml.contains("android:left=\"4dp\""))
     }
 
     @Test
