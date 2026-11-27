@@ -106,35 +106,35 @@ object SplitInstallStatusMapper {
         val detail = statusMessage?.trim().orEmpty()
         return when (status) {
             STATUS_PENDING_USER_ACTION -> SplitInstallOutcome.PendingUserAction
-            STATUS_SUCCESS -> SplitInstallOutcome.Success("Pemasangan clone Split APK berhasil!")
+            STATUS_SUCCESS -> SplitInstallOutcome.Success("Split APK clone installed!")
             STATUS_FAILURE_ABORTED -> SplitInstallOutcome.Failure(
                 CloneError.SPLIT_INSTALL_FAILED,
-                "Pemasangan dibatalkan oleh pengguna atau sistem."
+                "Installation was cancelled by the user or system."
             )
             STATUS_FAILURE_BLOCKED -> SplitInstallOutcome.Failure(
                 CloneError.SPLIT_INSTALL_FAILED,
-                "Pemasangan diblokir oleh sistem atau Play Protect. Lihat panduan Play Protect di layar Hasil."
+                "Installation was blocked by the system or Play Protect. See the Play Protect Guide in Clone Results."
             )
             STATUS_FAILURE_CONFLICT -> SplitInstallOutcome.Failure(
                 CloneError.SPLIT_INSTALL_FAILED,
-                "Gagal memasang karena konflik package name atau tanda tangan dengan aplikasi yang sudah terpasang."
+                "Failed to install due to a package name or signature conflict with an installed app."
             )
             STATUS_FAILURE_STORAGE -> SplitInstallOutcome.Failure(
                 CloneError.SPLIT_INSTALL_FAILED,
-                "Gagal memasang karena ruang penyimpanan perangkat tidak mencukupi."
+                "Failed to install because device storage is insufficient."
             )
             STATUS_FAILURE_INCOMPATIBLE -> SplitInstallOutcome.Failure(
                 CloneError.SPLIT_INSTALL_FAILED,
-                "Gagal memasang: berkas split tidak kompatibel dengan perangkat atau ABI ini."
+                "Failed to install: split files are incompatible with this device or ABI."
             )
             STATUS_FAILURE_INVALID -> SplitInstallOutcome.Failure(
                 CloneError.SPLIT_INSTALL_FAILED,
-                if (detail.isNotEmpty()) "Berkas split APK ditolak sistem: $detail"
-                else "Berkas split APK dianggap tidak valid oleh sistem Android."
+                if (detail.isNotEmpty()) "Split APK files were rejected by the system: $detail"
+                else "Split APK files were rejected as invalid by Android."
             )
             else -> SplitInstallOutcome.Failure(
                 CloneError.SPLIT_INSTALL_FAILED,
-                if (detail.isNotEmpty()) "Pemasangan Split APK gagal: $detail"
+                if (detail.isNotEmpty()) "Split APK installation failed: $detail"
                 else CloneError.SPLIT_INSTALL_FAILED.userMessage
             )
         }

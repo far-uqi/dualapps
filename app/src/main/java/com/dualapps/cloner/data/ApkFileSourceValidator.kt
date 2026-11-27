@@ -162,7 +162,7 @@ object ApkFileSourceValidator {
         if (!apkFile.exists() || !apkFile.isFile || !apkFile.canRead() || apkFile.length() <= 0L) {
             runCatching { apkFile.delete() }
             return ApkFileValidationResult.Invalid(
-                "Berkas APK tidak dapat dibaca atau berukuran kosong. Pilih berkas .apk yang valid."
+                "APK file cannot be read or is empty. Choose a valid .apk file."
             )
         }
 
@@ -173,7 +173,7 @@ object ApkFileSourceValidator {
         if (!hasManifest) {
             runCatching { apkFile.delete() }
             return ApkFileValidationResult.Invalid(
-                "Berkas yang dipilih bukan APK Android yang valid (AndroidManifest.xml tidak ditemukan)."
+                "The selected file is not a valid Android APK (AndroidManifest.xml not found)."
             )
         }
 
@@ -181,7 +181,7 @@ object ApkFileSourceValidator {
         if (metadata == null || metadata.packageName.isBlank()) {
             runCatching { apkFile.delete() }
             return ApkFileValidationResult.Invalid(
-                "Berkas APK tidak valid atau rusak dan tidak dapat dibaca oleh sistem Android."
+                "The APK file is invalid or corrupted and cannot be read by Android."
             )
         }
 

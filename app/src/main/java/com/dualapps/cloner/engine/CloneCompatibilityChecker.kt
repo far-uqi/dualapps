@@ -107,15 +107,15 @@ data class CompatibilityReport(
         val primary = blockingIssues.ifEmpty { issues }
         if (primary.isEmpty()) return ""
         val baseMsg = if (primary.size == 1) {
-            "Aplikasi ini tidak bisa di-clone. Alasan: ${primary.first().reason} Clone akan tertutup sendiri saat dibuka."
+            "This app cannot be cloned. Reason: ${primary.first().reason} The clone will crash on launch."
         } else {
             val details = primary.take(3).joinToString("; ") { "${it.authority} (${it.permission})" }
-            val extra = if (primary.size > 3) " dan ${primary.size - 3} lainnya" else ""
-            "Aplikasi ini tidak bisa di-clone. Alasan: aplikasinya memanggil provider ber-permission signature secara langsung ($details$extra). Clone akan tertutup sendiri saat dibuka."
+            val extra = if (primary.size > 3) " and ${primary.size - 3} more" else ""
+            "This app cannot be cloned. Reason: it directly calls signature-protected providers ($details$extra). The clone will crash on launch."
         }
         val extraWarnings = if (blockingIssues.isNotEmpty() && warnings.isNotEmpty()) {
             val wSummary = warnings.take(2).joinToString("; ") { "${it.authority} (${it.permission})" }
-            "\nCatatan lintas-aplikasi: $wSummary."
+            "\nCross-app note: $wSummary."
         } else {
             ""
         }
@@ -127,12 +127,12 @@ data class CompatibilityReport(
         if (list.isEmpty()) return ""
         if (list.size == 1) {
             val w = list.first()
-            val ownerSuffix = w.ownerPackageName?.takeIf { it.isNotBlank() }?.let { " milik $it" }.orEmpty()
-            return "Peringatan: aplikasi ini memanggil provider ${w.authority}$ownerSuffix yang dikunci permission signature ${w.permission}. Biasanya ditangani aplikasi dengan aman, tetapi ada risiko clone tertutup saat fitur itu dipakai."
+            val ownerSuffix = w.ownerPackageName?.takeIf { it.isNotBlank() }?.let { " owned by $it" }.orEmpty()
+            return "Warning: this app calls provider ${w.authority}$ownerSuffix locked by signature permission ${w.permission}. Apps usually handle this safely, but the clone may crash when using that feature."
         }
         val details = list.take(3).joinToString("; ") { "${it.authority} (${it.permission})" }
-        val extra = if (list.size > 3) " dan ${list.size - 3} lainnya" else ""
-        return "Peringatan: aplikasi ini memanggil provider lintas-aplikasi ber-permission signature ($details$extra). Biasanya ditangani aplikasi dengan aman, tetapi ada risiko clone tertutup saat fitur itu dipakai."
+        val extra = if (list.size > 3) " and ${list.size - 3} more" else ""
+        return "Warning: this app calls cross-app signature-protected providers ($details$extra). Apps usually handle this safely, but the clone may crash when using those features."
     }
 }
 
@@ -266,7 +266,7 @@ object CloneCompatibilityChecker {
                                 CompatibilityIssue(
                                     authority = authority,
                                     permission = permName,
-                                    reason = "aplikasinya memanggil provider $authority yang dikunci permission signature $permName.",
+                                    reason = "it calls provider $authority locked by signature permission $permName.",
                                     rule = CompatibilityRule.A,
                                     severity = CompatibilitySeverity.BLOCKING
                                 )
@@ -286,13 +286,13 @@ object CloneCompatibilityChecker {
                     if (seenKeys.add(key)) {
                         val ownerSuffix = resolved.ownerPackageName
                             ?.takeIf { it.isNotBlank() }
-                            ?.let { " milik $it" }
+                            ?.let { " owned by $it" }
                             .orEmpty()
                         issues.add(
                             CompatibilityIssue(
                                 authority = authority,
                                 permission = permName,
-                                reason = "aplikasinya memanggil provider $authority$ownerSuffix yang dikunci permission signature $permName.",
+                                reason = "it calls provider $authority$ownerSuffix locked by signature permission $permName.",
                                 rule = CompatibilityRule.B,
                                 severity = CompatibilitySeverity.WARNING,
                                 ownerPackageName = resolved.ownerPackageName

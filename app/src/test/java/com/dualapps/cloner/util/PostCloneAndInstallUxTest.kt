@@ -66,9 +66,9 @@ class PostCloneAndInstallUxTest {
         assertEquals(InstallProgressTracker.MSG_INSTALLING, confirmed.message)
 
         // Gagal/dibatalkan berhenti pada state Failed (bukan Installing)
-        InstallProgressTracker.onSplitInstallFailed("com.a.clone", "App A", "Pemasangan dibatalkan.")
+        InstallProgressTracker.onSplitInstallFailed("com.a.clone", "App A", "Installation cancelled.")
         val failed = InstallProgressTracker.state.value as InstallProgressState.Failed
-        assertEquals("Pemasangan dibatalkan.", failed.message)
+        assertEquals("Installation cancelled.", failed.message)
         InstallProgressTracker.consumeTerminalState()
         assertEquals(InstallProgressState.Idle, InstallProgressTracker.state.value)
     }

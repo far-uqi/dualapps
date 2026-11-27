@@ -49,7 +49,7 @@ object ApkBundleExtractor {
         }
         if (sourceArchiveFile.length() > MAX_BUNDLE_TOTAL_BYTES) {
             return ApkFileValidationResult.Invalid(
-                "Ukuran berkas bundle melebihi batas wajar 2 GB dan tidak dapat diproses.",
+                "Bundle file exceeds the 2 GB limit and cannot be processed.",
                 CloneError.BUNDLE_INVALID
             )
         }
@@ -94,7 +94,7 @@ object ApkBundleExtractor {
                     }
                     if (missing != null) {
                         return ApkFileValidationResult.Invalid(
-                            "Berkas APK '$missing' yang tercantum di manifest.json tidak ditemukan di dalam XAPK.",
+                            "APK file '$missing' declared in manifest.json was not found inside the XAPK.",
                             CloneError.BUNDLE_INVALID
                         )
                     }
@@ -136,7 +136,7 @@ object ApkBundleExtractor {
                         ?: run {
                             bundleWorkDir.deleteRecursively()
                             return ApkFileValidationResult.Invalid(
-                                "Berkas '$safeName' di dalam bundle bukan APK valid atau tidak memiliki AndroidManifest.xml.",
+                                "File '$safeName' inside the bundle is not a valid APK or is missing AndroidManifest.xml.",
                                 CloneError.BUNDLE_INVALID
                             )
                         }
@@ -156,7 +156,7 @@ object ApkBundleExtractor {
                 if (!xapkInfo?.packageName.isNullOrBlank() && xapkInfo!!.packageName != resolvedPackage) {
                     bundleWorkDir.deleteRecursively()
                     return ApkFileValidationResult.Invalid(
-                        "Package name di manifest.json ('${xapkInfo.packageName}') tidak cocok dengan isi APK ('$resolvedPackage').",
+                        "Package name in manifest.json ('${xapkInfo.packageName}') does not match the APK ('${resolvedPackage}').",
                         CloneError.BUNDLE_PACKAGE_MISMATCH
                     )
                 }

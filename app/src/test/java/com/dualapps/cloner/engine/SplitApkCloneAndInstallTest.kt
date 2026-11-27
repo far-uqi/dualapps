@@ -544,7 +544,7 @@ class SplitApkCloneAndInstallTest {
     }
 
     @Test
-    fun splitInstallStatusMapperMapsAllPackageInstallerStatusesToIndonesian() {
+    fun splitInstallStatusMapperMapsAllPackageInstallerStatusesToEnglish() {
         assertEquals(
             SplitInstallOutcome.PendingUserAction,
             SplitInstallStatusMapper.mapStatus(SplitInstallStatusMapper.STATUS_PENDING_USER_ACTION, null)
@@ -560,7 +560,7 @@ class SplitApkCloneAndInstallTest {
 
         val conflict = SplitInstallStatusMapper.mapStatus(SplitInstallStatusMapper.STATUS_FAILURE_CONFLICT, null)
             as SplitInstallOutcome.Failure
-        assertTrue(conflict.message.contains("konflik"))
+        assertTrue(conflict.message.contains("conflict"))
 
         val incompatible = SplitInstallStatusMapper.mapStatus(SplitInstallStatusMapper.STATUS_FAILURE_INCOMPATIBLE, null)
             as SplitInstallOutcome.Failure

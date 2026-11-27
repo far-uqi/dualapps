@@ -70,10 +70,10 @@ sealed class ResultsLoadState {
  */
 object InstallProgressTracker {
 
-    const val MSG_INSTALLING = "Memasang…"
-    const val MSG_WAITING_CONFIRM = "Menunggu konfirmasi pemasangan…"
-    const val MSG_INSTALLED = "Terpasang ✓"
-    const val MSG_SINGLE_APK_INTENT = "Memasang… Lanjutkan di dialog sistem."
+    const val MSG_INSTALLING = "Installing…"
+    const val MSG_WAITING_CONFIRM = "Waiting for install confirmation…"
+    const val MSG_INSTALLED = "Installed ✓"
+    const val MSG_SINGLE_APK_INTENT = "Installing… Continue in the system dialog."
 
     private val _state = MutableStateFlow<InstallProgressState>(InstallProgressState.Idle)
     val state: StateFlow<InstallProgressState> = _state.asStateFlow()

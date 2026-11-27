@@ -41,13 +41,13 @@ class AndroidArchivePackageReader(
 }
 
 enum class CloneStep(val index: Int, val label: String) {
-    VALIDATE_SOURCE(0, "Validasi awal & salin APK sumber"),
+    VALIDATE_SOURCE(0, "Validate source & copy APK"),
     PATCH_MANIFEST(1, "Patch AndroidManifest.xml (AXML)"),
     PATCH_ARSC(2, "Patch resources.arsc"),
-    REBUILD_APK(3, "Bangun ulang APK & jaga alignment"),
-    APPLY_IDENTITY(4, "Terapkan identitas"),
-    SIGN_AND_VERIFY(5, "Tanda tangani ulang (v1 + v2) & ApkVerifier"),
-    VERIFY_ARCHIVE(6, "Verifikasi akhir package archive")
+    REBUILD_APK(3, "Rebuild APK & preserve alignment"),
+    APPLY_IDENTITY(4, "Apply custom identity"),
+    SIGN_AND_VERIFY(5, "Re-sign (v1 + v2) & ApkVerifier"),
+    VERIFY_ARCHIVE(6, "Verify final package archive")
 }
 
 data class CloneRequest(
@@ -528,7 +528,7 @@ class ClonePipeline(
 
     companion object {
         const val OVERRIDE_WARNING_NOTE =
-            "Pemeriksaan kompatibilitas dilewati atas pilihan pengguna (risiko crash saat dibuka)."
+            "Compatibility check was skipped by user choice (crash risk on launch)."
 
         internal fun sanitizeSplitFileName(splitName: String, index: Int): String {
             val cleaned = splitName.trim()

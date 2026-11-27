@@ -1,7 +1,17 @@
 # STATUS — Dualapps
-Terakhir diperbarui: 2026-11-26 16:31 WIB — Fase 14 (Polish UX Pasca-Clone & Pemasangan) selesai
+Terakhir diperbarui: 2026-11-27 11:26 WIB — Fase 15 (Tab Installed Pill + Perbaikan Tombol OPEN + Seluruh UI Bahasa Inggris) selesai
 
 ## Ringkasan fase terakhir
+- Fase: 15 — Polish tampilan & konversi bahasa penuh ke Bahasa Inggris (tanpa mengubah logika mesin clone/patch/signing/checker):
+  1. Badge `"Installed ✓"` dipindahkan dari pojok kanan-atas dalam kartu menjadi **tab pill membulat penuh** (`tvInstalledTab` dengan `bg_neo_tab_installed_pill.xml`: radius `999dp`, border `2.5dp`, shadow `4dp`, teal `#1ED3A6`) di atas kartu sejajar baris tab folder `CLONE RESULT` (`item_cloned_apk.xml`, `ClonedApksAdapter.kt`); badge dalam kartu `tvInstalledBadge` dihapus.
+  2. Tombol `OPEN` (`btnOpen` di `item_cloned_apk.xml` & `btnOpenApp` di `activity_clone_progress.xml`) diperbaiki dari sebelumnya keliru memakai drawable tab folder `bg_neo_folder_tab_teal` (sudut bawah lurus tanpa shadow) menjadi drawable tombol neo-brutalism standar baru `bg_neo_button_teal.xml` (radius `12dp` di keempat sudut, border `2.5dp`, hard shadow `4dp`, `paddingEnd`/`paddingBottom` `4dp`, identik struktur dengan `bg_neo_button_yellow` / `bg_neo_button_white`).
+  3. **Seluruh teks UI & pesan error dikonversi ke Bahasa Inggris** (`strings.xml`, `CloneError.kt`, `InstallProgressTracker.kt`, `SplitInstallSessionCoordinator.kt`, `SplitInstallResultReceiver.kt`, `PackageNameValidator.kt`, `ApkBundleExtractor.kt`, `ApkFileSourceValidator.kt`, label `CloneStep` & `OVERRIDE_WARNING_NOTE` di `ClonePipeline.kt`, serta teks pesan `CloneCompatibilityChecker.kt`).
+- Test: **109/109 lulus** (106 test sebelumnya + 3 test baru Fase 15 di `Phase15UiAndEnglishGuardTest`), 0 gagal, 0 dilewati (perintah: `.\gradlew.bat testDebugUnitTest assembleDebug` dengan `JAVA_HOME=C:\Users\Administrator\.jdks\jdk-17.0.21.1+2`)
+- Build debug: **BUILD SUCCESSFUL** — `app/build/outputs/apk/debug/app-debug.apk` (`10.227.853` byte / ~9,75 MB, `EXIT_CODE=0`, durasi total `212.7s`)
+- Commit: satu commit di branch `adil` — `"feat(phase15): polish installed badge, OPEN button, all-English UI"`
+- Audit mandiri Fase 15: 0 ketidaksesuaian pada kode/test/build; tidak ada perubahan logika pada mesin clone/patch/signing/checker maupun `AndroidManifest.xml` / `build.gradle.kts`; seluruh tampilan visual (tab pill `"Installed ✓"`, tombol `OPEN`, dan seluruh layar Bahasa Inggris) menunggu verifikasi perangkat Cak di RMX1971.
+
+## Ringkasan Fase 14 (sebelumnya)
 - Fase: 14 — Perbaikan UX 5 poin pasca-clone & pemasangan (tanpa mengubah mesin clone/patch/signing/checker maupun desain neo-brutalism):
   1. Kartu penyelesaian eksplisit setelah 7/7 di `CloneProgressActivity` (`Clone selesai dibuat ✓` + nama + package + ukuran/jumlah file + `Ketuk PASANG untuk memasang clone ini di perangkatmu.`).
   2. Perbaikan transisi fase `InstallProgressTracker` (`PREPARING` → `WAITING_CONFIRMATION` `"Menunggu konfirmasi pemasangan…"` → `INSTALLING` `"Memasang…"` → `Succeeded` `"Terpasang ✓"` / `Failed` tanpa spinner macet) melalui kombinasi `onPause()`/`onResume()` saat kembali dari dialog sistem + `PackageInstaller.SessionCallback` (`onActiveChanged`/`onProgressChanged`) di `SplitApkInstaller`.

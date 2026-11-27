@@ -139,10 +139,10 @@ class CloneCompatibilityCheckerTest {
         )
         val msg = report.formatUserMessage()
         assertTrue(CloneError.INCOMPATIBLE_APP.userMessage.isNotBlank())
-        assertTrue(msg.contains("tidak bisa di-clone"))
+        assertTrue(msg.contains("cannot be cloned"))
         assertTrue(msg.contains("com.facebook.katana.ClientMessagePushDedupInfoProvider"))
         assertTrue(msg.contains("com.facebook.permission.prod.FB_APP_COMMUNICATION"))
-        assertTrue(msg.contains("tertutup sendiri"))
+        assertTrue(msg.contains("crash on launch"))
     }
 
     // --- Fase 13.2: Pemisahan keparahan Aturan A (BLOCKING) vs Aturan B (WARNING) ---
@@ -246,7 +246,7 @@ class CloneCompatibilityCheckerTest {
         assertEquals(1, report.warnings.size)
         val blockingMsg = report.formatUserMessage()
         assertTrue(blockingMsg.contains("com.example.katana.ClientMessagePushDedupInfoProvider"))
-        assertTrue(blockingMsg.contains("tidak bisa di-clone"))
+        assertTrue(blockingMsg.contains("cannot be cloned"))
     }
 
     @Test
@@ -281,10 +281,10 @@ class CloneCompatibilityCheckerTest {
             )
         )
         val warningMsg = report.formatWarningMessage()
-        assertTrue(warningMsg.startsWith("Peringatan:"))
+        assertTrue(warningMsg.startsWith("Warning:"))
         assertTrue(warningMsg.contains("com.facebook.katana.provider.UserValuesProvider"))
         assertTrue(warningMsg.contains("com.facebook.katana.provider.ACCESS"))
-        assertTrue(warningMsg.contains("risiko clone tertutup"))
+        assertTrue(warningMsg.contains("may crash"))
     }
 
     companion object {

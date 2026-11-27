@@ -67,7 +67,7 @@ class ClonedApksAdapter(
                 ctx.getString(R.string.tab_clone_result)
             }
             binding.tvCloneName.text = record.cloneName
-            binding.tvInstalledBadge.visibility =
+            binding.tvInstalledTab.visibility =
                 if (item.isCloneInstalled) View.VISIBLE else View.GONE
             binding.btnOpen.visibility =
                 if (item.isCloneInstalled) View.VISIBLE else View.GONE

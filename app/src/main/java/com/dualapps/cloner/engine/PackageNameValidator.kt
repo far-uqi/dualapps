@@ -22,7 +22,7 @@ object PackageNameValidator {
     ): ValidationResult {
         val trimmed = packageName.trim()
         if (trimmed.isEmpty()) {
-            return ValidationResult.Invalid("Package name clone tidak boleh kosong.")
+            return ValidationResult.Invalid("Clone package name cannot be empty.")
         }
         if (trimmed.length > ArscPatcher.MAX_PACKAGE_NAME_LENGTH) {
             return ValidationResult.Invalid(
@@ -32,11 +32,11 @@ object PackageNameValidator {
         }
         if (!isSyntaxValid(trimmed)) {
             return ValidationResult.Invalid(
-                "Format package tidak valid. Gunakan minimal dua segmen dipisah titik (contoh: com.contoh.clone) dengan huruf, angka, atau garis bawah."
+                "Invalid package format. Use at least two dot-separated segments (e.g. com.example.clone) with letters, digits, or underscores."
             )
         }
         if (trimmed == originalPackage) {
-            return ValidationResult.Invalid("Package name clone harus berbeda dari package aplikasi asli.")
+            return ValidationResult.Invalid("Clone package name must differ from the original app package.")
         }
         if (isInstalled(trimmed)) {
             return ValidationResult.Invalid(

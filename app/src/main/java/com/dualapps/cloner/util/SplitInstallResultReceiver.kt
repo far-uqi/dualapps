@@ -46,7 +46,7 @@ class SplitInstallResultReceiver : BroadcastReceiver() {
                 } else {
                     val errMsg = (SplitInstallStatusMapper.mapStatus(
                         PackageInstaller.STATUS_FAILURE,
-                        "Dialog konfirmasi pemasangan tidak tersedia."
+                        "Install confirmation dialog is unavailable."
                     ) as? SplitInstallOutcome.Failure)?.message.orEmpty()
                     InstallProgressTracker.onSplitInstallFailed(clonePackage, cloneName, errMsg)
                     Toast.makeText(context, errMsg, Toast.LENGTH_LONG).show()
