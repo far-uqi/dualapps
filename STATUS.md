@@ -1,7 +1,22 @@
 # STATUS — Dualapps
-Terakhir diperbarui: 2026-11-27 15:49 WIB — Fase 17 (Alur Hapus Clone + Uninstall) selesai
+Terakhir diperbarui: 2026-11-27 16:45 WIB — Fase 17.1 (Diagnosis Gagal Uninstall) selesai
 
-## Ringkasan fase terakhir
+## Ringkasan fase terakhir (Diagnosis Only — tanpa perubahan kode)
+- Fase: 17.1 — Diagnosis gagal uninstall pada jalur `"Delete file & uninstall app"` (video Cak 27 Nov 2026 16:11–16:24 WIB di RMX1971: setelah `"Yes, delete"`, dialog uninstall sistem tidak pernah muncul dan langsung tampil toast `"Deletion cancelled."`):
+  - **Status reproduksi perangkat:** `adb devices -l` (via `C:\Users\Administrator\AppData\Local\Android\Sdk\platform-tools\adb.exe`) mengembalikan daftar perangkat kosong (HP RMX1971 tidak tersambung saat sesi ini), sehingga **logcat langsung dari RMX1971 belum didapat** dan menunggu verifikasi 1x dari Cak.
+  - **Akar masalah utama (terbukti dari kode + spesifikasi resmi Android API 28+, menunggu konfirmasi 1 baris logcat di RMX1971):**
+    1. `app/build.gradle.kts` (baris 26) menetapkan `targetSdk = 34` (≥ API 28 / Android 9), sedangkan `app/src/main/AndroidManifest.xml` (baris 5–9) **hanya mendeklarasikan `QUERY_ALL_PACKAGES` dan `REQUEST_INSTALL_PACKAGES` — TIDAK mendeklarasikan `<uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />`**.
+    2. Sejak Android 9 (API 28), `com.android.packageinstaller` (`UninstallerActivity`) menolak permintaan `Intent.ACTION_DELETE` / `ACTION_UNINSTALL_PACKAGE` (maupun `PackageInstaller.uninstall()`) dari aplikasi dengan `targetSdk >= 28` yang tidak memiliki izin normal `REQUEST_DELETE_PACKAGES`. Intent tetap berhasil di-resolve dan di-launch (tidak melempar exception di `ResultsActivity.kt:444-446`), namun `UninstallerActivity` langsung memanggil `finish()` (`RESULT_CANCELED`) tanpa menampilkan dialog satu frame pun.
+    3. Callback `uninstallLauncher` (`ResultsActivity.kt:58-95`) mengabaikan `result.resultCode`/`result.data` dan langsung mengecek `isPackageInstalledOnDevice(record.clonePackageName)`. Karena paket masih terpasang, `CloneDeleteCoordinator.completeAfterSystemUninstall(..., isStillInstalledLive = true)` (baris 129–133) selalu memetakan semua kegagalan/penolakan sistem menjadi `CancelledAtSystemDialog` → toast `"Deletion cancelled."`.
+  - **Temuan sekunder (tampilan "terpilih default" di Popup 1):** Tidak ada state seleksi default di `ResultsActivity.kt:336-378`. Tampilan kuning pada `"Delete file & uninstall app"` berasal murni dari styling statis XML di `app/src/main/res/layout/dialog_delete_options.xml` baris 72 (`android:background="@drawable/bg_neo_button_yellow"`) dan baris 97 (`android:textColor="@color/ink_primary"`), sedangkan `"Delete file only"` (baris 37 & 62) memakai `bg_neo_button_white` & `ink_muted`.
+  - **Rekomendasi untuk Fase 17.2 (setelah konfirmasi logcat RMX1971):**
+    1. Tambahkan `<uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />` di `AndroidManifest.xml` (izin normal/install-time tanpa dialog izin runtime; perlu persetujuan Cak/Cireng karena sebelumnya manifest dibatasi 2 izin).
+    2. Perbaiki pembacaan hasil di `ResultsActivity.kt` (`uninstallLauncher`) agar tidak buta menyamakan dialog ditolak sistem dengan pembatalan pengguna (cek `ActivityResult` + deteksi bila activity langsung kembali tanpa interaksi/tanpa izin).
+    3. Ubah `optionDeleteFileAndUninstall` di `dialog_delete_options.xml` baris 72 & 97 menjadi `bg_neo_button_white` & `ink_muted` agar kedua opsi tampil netral tanpa pilihan default.
+- Berkas berubah fase ini: `STATUS.md` saja (0 berkas kode/test/layout/manifest diubah).
+- Commit: satu commit di branch `adil` — `"docs(phase17.1): diagnose uninstall failure"`
+
+## Ringkasan Fase 17 (sebelumnya)
 - Fase: 17 — Alur hapus 2-langkah dengan opsi uninstall sistem (seluruh 5 keputusan Cak dikunci, semua teks UI Bahasa Inggris, tanpa menyentuh mesin clone/patch/signing/checker):
   1. **Popup 1 (`dialog_delete_options.xml`)** — muncul saat tombol `DELETE` ditekan pada kartu clone di `ResultsActivity`; memeriksa status terpasang secara LIVE via `PackageManager.getPackageInfo`. Bila clone terpasang, tampilkan 2 opsi neo-brutalism beserta sub-teks konsekuensi & ukuran berkas terformat (`FormatUtils.formatFileSize`): **"Delete file only"** (`"Frees {size}. The installed app stays on your device."`) dan **"Delete file & uninstall app"** (`"Frees {size} + app storage. The app will be removed from your device."`). Bila clone belum terpasang, opsi uninstall **disembunyikan** (`View.GONE`).
   2. **Popup 2 (`dialog_confirm_delete.xml`)** — konfirmasi akhir dengan tombol **"Cancel"** dan **"Yes, delete"** yang mengulang konsekuensi spesifik opsi terpilih (termasuk catatan bahwa untuk memasang ulang perlu clone ulang pada mode *file only*, dan peringatan permanen pada mode *file & uninstall*). Tap di luar dialog atau tombol Back = batal (tidak ada berkas yang dihapus).
