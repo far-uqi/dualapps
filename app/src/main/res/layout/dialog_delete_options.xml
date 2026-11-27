@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="@drawable/bg_neo_card"
+    android:orientation="vertical"
+    android:paddingStart="18dp"
+    android:paddingTop="18dp"
+    android:paddingEnd="22dp"
+    android:paddingBottom="22dp">
+
+    <TextView
+        android:id="@+id/tvDeleteOptionsTitle"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:fontFamily="sans-serif-black"
+        android:text="@string/delete_options_title"
+        android:textColor="@color/ink_primary"
+        android:textSize="18sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:id="@+id/tvDeleteOptionsApp"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:textColor="@color/ink_muted"
+        android:textSize="12.5sp"
+        tools:text="Muse 2 (com.muse.app.clone)" />
+
+    <LinearLayout
+        android:id="@+id/optionDeleteFileOnly"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="14dp"
+        android:background="@drawable/bg_neo_button_white"
+        android:clickable="true"
+        android:focusable="true"
+        android:orientation="vertical"
+        android:paddingStart="14dp"
+        android:paddingTop="12dp"
+        android:paddingEnd="18dp"
+        android:paddingBottom="16dp">
+
+        <TextView
+            android:id="@+id/tvFileOnlyTitle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:fontFamily="sans-serif-black"
+            android:text="@string/delete_option_file_only_title"
+            android:textColor="@color/ink_primary"
+            android:textSize="14.5sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/tvFileOnlySubtitle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:lineSpacingMultiplier="1.2"
+            android:textColor="@color/ink_muted"
+            android:textSize="12.5sp"
+            tools:text="Frees 24.5 MB. The installed app stays on your device." />
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/optionDeleteFileAndUninstall"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
+        android:background="@drawable/bg_neo_button_yellow"
+        android:clickable="true"
+        android:focusable="true"
+        android:orientation="vertical"
+        android:paddingStart="14dp"
+        android:paddingTop="12dp"
+        android:paddingEnd="18dp"
+        android:paddingBottom="16dp">
+
+        <TextView
+            android:id="@+id/tvFileAndUninstallTitle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:fontFamily="sans-serif-black"
+            android:text="@string/delete_option_file_and_uninstall_title"
+            android:textColor="@color/ink_primary"
+            android:textSize="14.5sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/tvFileAndUninstallSubtitle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:lineSpacingMultiplier="1.2"
+            android:textColor="@color/ink_primary"
+            android:textSize="12.5sp"
+            tools:text="Frees 24.5 MB + app storage. The app will be removed from your device." />
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/btnCancelDeleteOptions"
+        android:layout_width="match_parent"
+        android:layout_height="44dp"
+        android:layout_marginTop="14dp"
+        android:background="@drawable/bg_neo_button_white"
+        android:clickable="true"
+        android:focusable="true"
+        android:fontFamily="sans-serif-black"
+        android:gravity="center"
+        android:paddingEnd="4dp"
+        android:paddingBottom="4dp"
+        android:text="@string/action_cancel_dialog"
+        android:textColor="@color/ink_primary"
+        android:textSize="13.5sp"
+        android:textStyle="bold" />
+
+</LinearLayout>

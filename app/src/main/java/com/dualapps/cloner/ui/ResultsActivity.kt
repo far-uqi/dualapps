@@ -3,10 +3,14 @@ package com.dualapps.cloner.ui
 import android.app.Dialog
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.dualapps.cloner.R
@@ -14,11 +18,16 @@ import com.dualapps.cloner.data.ClonedApksRepository
 import com.dualapps.cloner.data.InstalledAppsRepository
 import com.dualapps.cloner.databinding.ActivityResultsBinding
 import com.dualapps.cloner.databinding.DialogConfirmDeleteBinding
+import com.dualapps.cloner.databinding.DialogDeleteOptionsBinding
 import com.dualapps.cloner.engine.CloneUpdateChecker
 import com.dualapps.cloner.engine.InstalledPackageVersion
 import com.dualapps.cloner.model.ClonedApkRecord
 import com.dualapps.cloner.model.InstalledApp
 import com.dualapps.cloner.util.ApkInstaller
+import com.dualapps.cloner.util.CloneDeleteCoordinator
+import com.dualapps.cloner.util.CloneDeleteCoordinator.CloneDeleteMode
+import com.dualapps.cloner.util.CloneDeleteCoordinator.DeleteExecutionOutcome
+import com.dualapps.cloner.util.FormatUtils
 import com.dualapps.cloner.util.InstallOrigin
 import com.dualapps.cloner.util.InstallProgressState
 import com.dualapps.cloner.util.InstallProgressTracker
@@ -44,11 +53,55 @@ class ResultsActivity : AppCompatActivity() {
     private var refreshJob: Job? = null
     private var statusAutoHideJob: Job? = null
     private var hasLoadedOnce: Boolean = false
+    private var pendingUninstallRecord: ClonedApkRecord? = null
+
+    private val uninstallLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) {
+        val record = pendingUninstallRecord ?: return@registerForActivityResult
+        pendingUninstallRecord = null
+        val isStillInstalled = isPackageInstalledOnDevice(record.clonePackageName)
+        when (
+            CloneDeleteCoordinator.completeAfterSystemUninstall(
+                record = record,
+                isStillInstalledLive = isStillInstalled,
+                deleteFiles = { repository.delete(it) }
+            )
+        ) {
+            DeleteExecutionOutcome.DeletedFileAndUninstalled -> {
+                Toast.makeText(
+                    this,
+                    R.string.msg_result_deleted_and_uninstalled,
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+            DeleteExecutionOutcome.CancelledAtSystemDialog -> {
+                Toast.makeText(
+                    this,
+                    R.string.msg_delete_cancelled,
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+            DeleteExecutionOutcome.FileDeleteFailed -> {
+                Toast.makeText(
+                    this,
+                    R.string.err_result_delete_failed,
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+            else -> Unit
+        }
+        refreshResults()
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityResultsBinding.inflate(layoutInflater)
         setContentView(binding.root)
+
+        savedInstanceState?.getString(STATE_PENDING_UNINSTALL_JSON)?.let { raw ->
+            pendingUninstallRecord = ClonedApkRecord.fromJsonString(raw)
+        }
 
         repository = ClonedApksRepository(filesDir)
         installedAppsRepository = InstalledAppsRepository(packageManager)
@@ -56,11 +109,18 @@ class ResultsActivity : AppCompatActivity() {
             onOpenClick = ::openInstalledClone,
             onInstallClick = ::installRecord,
             onShareClick = ::shareRecord,
-            onDeleteClick = ::confirmDeleteRecord,
+            onDeleteClick = ::startDeleteFlow,
             onUpdateClick = ::updateRecord
         )
 
         setupUi()
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        pendingUninstallRecord?.let { record ->
+            outState.putString(STATE_PENDING_UNINSTALL_JSON, record.toJsonString())
+        }
     }
 
     override fun onPause() {
@@ -254,37 +314,151 @@ class ResultsActivity : AppCompatActivity() {
         }
     }
 
-    private fun confirmDeleteRecord(record: ClonedApkRecord) {
+    private fun isPackageInstalledOnDevice(packageName: String): Boolean {
+        return try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                packageManager.getPackageInfo(
+                    packageName,
+                    PackageManager.PackageInfoFlags.of(0L)
+                )
+            } else {
+                @Suppress("DEPRECATION")
+                packageManager.getPackageInfo(packageName, 0)
+            }
+            true
+        } catch (_: PackageManager.NameNotFoundException) {
+            false
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    private fun startDeleteFlow(record: ClonedApkRecord) {
+        val isInstalledLive = isPackageInstalledOnDevice(record.clonePackageName)
+        val formattedSize = FormatUtils.formatFileSize(record.apkSizeBytes)
+        val choiceModel = CloneDeleteCoordinator.buildChoiceModel(
+            record = record,
+            isInstalledLive = isInstalledLive,
+            formattedSize = formattedSize
+        )
+
         val dialog = Dialog(this, R.style.Theme_Dualapps_Dialog)
-        val dialogBinding = DialogConfirmDeleteBinding.inflate(layoutInflater)
+        val dialogBinding = DialogDeleteOptionsBinding.inflate(layoutInflater)
         dialog.setContentView(dialogBinding.root)
+        dialog.setCancelable(true)
+        dialog.setCanceledOnTouchOutside(true)
         dialog.window?.setLayout(
             (resources.displayMetrics.widthPixels * 0.90f).toInt(),
             ViewGroup.LayoutParams.WRAP_CONTENT
         )
 
-        dialogBinding.tvDeleteMessage.text = getString(
-            R.string.delete_confirm_message,
-            record.cloneName,
-            record.clonePackageName
-        )
-        dialogBinding.btnCancelDelete.setOnClickListener {
-            dialog.dismiss()
-        }
-        dialogBinding.btnConfirmDelete.setOnClickListener {
-            val deleted = repository.delete(record)
-            dialog.dismiss()
-            if (deleted) {
-                Toast.makeText(this, R.string.msg_result_deleted, Toast.LENGTH_SHORT).show()
-            } else {
-                Toast.makeText(this, R.string.err_result_delete_failed, Toast.LENGTH_SHORT).show()
+        dialogBinding.tvDeleteOptionsApp.text = "${record.cloneName} (${record.clonePackageName})"
+        dialogBinding.tvFileOnlySubtitle.text = choiceModel.fileOnlySubtitle
+
+        if (choiceModel.showUninstallOption) {
+            dialogBinding.optionDeleteFileAndUninstall.visibility = View.VISIBLE
+            dialogBinding.tvFileAndUninstallSubtitle.text = choiceModel.fileAndUninstallSubtitle
+            dialogBinding.optionDeleteFileAndUninstall.setOnClickListener {
+                dialog.dismiss()
+                showDeleteConfirmationDialog(record, CloneDeleteMode.FILE_AND_UNINSTALL)
             }
-            refreshResults()
+        } else {
+            dialogBinding.optionDeleteFileAndUninstall.visibility = View.GONE
+            dialogBinding.optionDeleteFileAndUninstall.setOnClickListener(null)
+        }
+
+        dialogBinding.optionDeleteFileOnly.setOnClickListener {
+            dialog.dismiss()
+            showDeleteConfirmationDialog(record, CloneDeleteMode.FILE_ONLY)
+        }
+        dialogBinding.btnCancelDeleteOptions.setOnClickListener {
+            dialog.dismiss()
         }
         dialog.show()
     }
 
+    private fun showDeleteConfirmationDialog(record: ClonedApkRecord, mode: CloneDeleteMode) {
+        val isInstalledLive = isPackageInstalledOnDevice(record.clonePackageName)
+        val formattedSize = FormatUtils.formatFileSize(record.apkSizeBytes)
+        val confirmModel = CloneDeleteCoordinator.buildConfirmModel(
+            record = record,
+            mode = mode,
+            isInstalledLive = isInstalledLive,
+            formattedSize = formattedSize
+        )
+
+        val dialog = Dialog(this, R.style.Theme_Dualapps_Dialog)
+        val dialogBinding = DialogConfirmDeleteBinding.inflate(layoutInflater)
+        dialog.setContentView(dialogBinding.root)
+        dialog.setCancelable(true)
+        dialog.setCanceledOnTouchOutside(true)
+        dialog.window?.setLayout(
+            (resources.displayMetrics.widthPixels * 0.90f).toInt(),
+            ViewGroup.LayoutParams.WRAP_CONTENT
+        )
+
+        dialogBinding.tvDeleteMessage.text = confirmModel.message
+        dialogBinding.btnCancelDelete.text = confirmModel.cancelLabel
+        dialogBinding.btnConfirmDelete.text = confirmModel.confirmLabel
+
+        dialogBinding.btnCancelDelete.setOnClickListener {
+            dialog.dismiss()
+        }
+        dialogBinding.btnConfirmDelete.setOnClickListener {
+            dialog.dismiss()
+            executeConfirmedDelete(record, mode)
+        }
+        dialog.show()
+    }
+
+    private fun executeConfirmedDelete(record: ClonedApkRecord, mode: CloneDeleteMode) {
+        val isInstalledLive = isPackageInstalledOnDevice(record.clonePackageName)
+        when (
+            val outcome = CloneDeleteCoordinator.beginConfirmedDelete(
+                record = record,
+                mode = mode,
+                isInstalledLive = isInstalledLive,
+                deleteFiles = { repository.delete(it) }
+            )
+        ) {
+            DeleteExecutionOutcome.DeletedFileOnly -> {
+                Toast.makeText(this, R.string.msg_result_deleted, Toast.LENGTH_SHORT).show()
+                refreshResults()
+            }
+            DeleteExecutionOutcome.FileDeleteFailed -> {
+                Toast.makeText(this, R.string.err_result_delete_failed, Toast.LENGTH_SHORT).show()
+                refreshResults()
+            }
+            is DeleteExecutionOutcome.AppAlreadyUninstalled -> {
+                Toast.makeText(this, R.string.err_uninstall_app_missing, Toast.LENGTH_LONG).show()
+                refreshResults()
+            }
+            is DeleteExecutionOutcome.NeedsSystemUninstall -> {
+                pendingUninstallRecord = record
+                val uninstallIntent = Intent(
+                    Intent.ACTION_DELETE,
+                    Uri.parse("package:${outcome.packageName}")
+                ).apply {
+                    putExtra(Intent.EXTRA_RETURN_RESULT, true)
+                }
+                try {
+                    uninstallLauncher.launch(uninstallIntent)
+                } catch (_: Exception) {
+                    pendingUninstallRecord = null
+                    Toast.makeText(
+                        this,
+                        R.string.err_uninstall_launch_failed,
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            }
+            else -> Unit
+        }
+    }
+
     companion object {
+        private const val STATE_PENDING_UNINSTALL_JSON = "state_pending_uninstall_json"
+
         fun createIntent(context: Context): Intent {
             return Intent(context, ResultsActivity::class.java)
         }

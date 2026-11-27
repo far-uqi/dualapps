@@ -27,7 +27,7 @@
         android:lineSpacingMultiplier="1.25"
         android:textColor="@color/ink_primary"
         android:textSize="14sp"
-        tools:text="Hapus APK hasil clone Dualapps 2 (com.dualapps.cloner.clone)?" />
+        tools:text="This will delete the clone files (24.5 MB) and uninstall 'Muse 2' from your device. This cannot be undone." />
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -47,7 +47,7 @@
             android:gravity="center"
             android:paddingEnd="4dp"
             android:paddingBottom="4dp"
-            android:text="@string/action_cancel"
+            android:text="@string/action_cancel_dialog"
             android:textColor="@color/ink_primary"
             android:textSize="13.5sp"
             android:textStyle="bold" />
@@ -65,7 +65,7 @@
             android:gravity="center"
             android:paddingEnd="4dp"
             android:paddingBottom="4dp"
-            android:text="@string/action_delete"
+            android:text="@string/action_yes_delete"
             android:textColor="@color/ink_primary"
             android:textSize="13.5sp"
             android:textStyle="bold" />
